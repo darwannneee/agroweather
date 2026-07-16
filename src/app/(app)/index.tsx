@@ -6,7 +6,7 @@ import { ThemedView } from '@/components/themed-view';
 import { useAuth } from '@/services/auth-context';
 import { pickDashboardRoute } from '@/lib/routing';
 
-export default function RootIndex() {
+export default function AppIndex() {
   const { session, profile, loading } = useAuth();
 
   if (loading) {

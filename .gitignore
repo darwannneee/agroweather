@@ -25,19 +25,37 @@ expo-env.d.ts
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+pnpm-debug.log*
+bun-debug.log*
 
 # macOS
 .DS_Store
 *.pem
 
 # local env files
-.env*.local
+.env
+.env.*
+!.env.example
 
 # typescript
 *.tsbuildinfo
+
+# tests
+coverage/
 
 example
 
 # generated native folders
 /ios
 /android
+
+# brainstorming visual companion mockups
+.superpowers/
+
+# AI / agent tooling & specs (private, not for repo)
+.claude/
+docs/
+CLAUDE.md
+AGENTS.md
+
+
