@@ -14,6 +14,7 @@ export default function AppLayout() {
       <Stack.Screen name="petani" options={{ title: 'Dashboard Petani' }} />
       <Stack.Screen name="pegawai" options={{ title: 'Dashboard Pegawai' }} />
       <Stack.Screen name="penataan-lahan" options={{ title: 'Penataan Lahan' }} />
+      <Stack.Screen name="task/[id]" options={{ title: 'Detail Task' }} />
     </Stack>
   );
 }
