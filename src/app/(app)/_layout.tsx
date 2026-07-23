@@ -13,6 +13,7 @@ export default function AppLayout() {
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="petani" options={{ title: 'Dashboard Petani' }} />
       <Stack.Screen name="pegawai" options={{ title: 'Dashboard Pegawai' }} />
+      <Stack.Screen name="penataan-lahan" options={{ title: 'Penataan Lahan' }} />
     </Stack>
   );
 }

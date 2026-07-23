@@ -1,5 +1,6 @@
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 
 import { DashboardSection } from '@/components/dashboard-section';
 import { ThemedText } from '@/components/themed-text';
@@ -9,6 +10,7 @@ import { useAuth } from '@/services/auth-context';
 
 export default function PegawaiDashboard() {
   const { profile, signOut } = useAuth();
+  const router = useRouter();
 
   function handleLogout() {
     Alert.alert('Keluar', 'Yakin mau keluar?', [
@@ -35,9 +37,13 @@ export default function PegawaiDashboard() {
             </Pressable>
           </View>
 
-          <DashboardSection title="Lahan Binaan" actionLabel="Kelola" onAction={() => {}}>
+          <DashboardSection
+            title="Lahan Binaan"
+            actionLabel="Kelola"
+            onAction={() => router.push('/(app)/penataan-lahan')}
+          >
             <ThemedText type="small" themeColor="textSecondary">
-              Belum ada lahan yang Anda bina.
+              Kelola data lahan, komoditas, dan petani binaan.
             </ThemedText>
           </DashboardSection>
 

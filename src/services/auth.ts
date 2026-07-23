@@ -57,3 +57,13 @@ export async function fetchUserProfile(userId: string): Promise<AppUser | null> 
   if (error) throw error;
   return data as AppUser | null;
 }
+
+export async function fetchFarmers(): Promise<AppUser[]> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, email, nama, role, created_at')
+    .eq('role', 'farmer')
+    .order('nama', { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as AppUser[];
+}
