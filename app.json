@@ -32,7 +32,25 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "AgroWeather menggunakan lokasi untuk mengecek kehadiran petani di sekitar lahan."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "AgroWeather membutuhkan akses foto untuk mengunggah bukti pekerjaan.",
+          "cameraPermission": "AgroWeather membutuhkan kamera untuk mengambil foto bukti pekerjaan.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
