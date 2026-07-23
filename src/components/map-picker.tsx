@@ -28,7 +28,10 @@ function parseCoordinate(value: string): number | null {
 }
 
 export function MapPicker({ latitude, longitude, radiusM, onChange }: MapPickerProps) {
-  const selected = latitude !== null && longitude !== null ? { latitude, longitude } : null;
+  const selected = useMemo(
+    () => (latitude !== null && longitude !== null ? { latitude, longitude } : null),
+    [latitude, longitude]
+  );
   const region = useMemo<Region>(
     () => ({
       ...DEFAULT_REGION,

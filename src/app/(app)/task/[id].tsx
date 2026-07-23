@@ -56,7 +56,6 @@ export default function TaskDetailScreen() {
   const loadDetail = useCallback(async () => {
     if (!taskId) return;
 
-    setLoading(true);
     try {
       const nextTask = await fetchTaskDetail(taskId);
       const [nextPlot, nextLocation, nextEvidenceCount] = await Promise.all([
@@ -86,7 +85,15 @@ export default function TaskDetailScreen() {
   }, [taskId]);
 
   useEffect(() => {
-    loadDetail();
+    const timeout = setTimeout(() => {
+      void loadDetail();
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [loadDetail]);
+
+  const refreshDetail = useCallback(async () => {
+    setLoading(true);
+    await loadDetail();
   }, [loadDetail]);
 
   async function handleSubmit() {
@@ -165,7 +172,7 @@ export default function TaskDetailScreen() {
                     <ThemedText type="small" themeColor="textSecondary">
                       {location?.message ?? 'Lokasi belum tersedia.'}
                     </ThemedText>
-                    <PrimaryButton label="Coba Lagi" onPress={loadDetail} />
+                    <PrimaryButton label="Coba Lagi" onPress={refreshDetail} />
                   </>
                 ) : (
                   <>

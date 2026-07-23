@@ -77,7 +77,6 @@ export default function PenataanLahanScreen() {
   );
 
   const loadData = useCallback(async () => {
-    setLoading(true);
     try {
       const [nextPlots, nextFarmers] = await Promise.all([fetchPlots(), fetchFarmers()]);
       setPlots(nextPlots);
@@ -90,7 +89,15 @@ export default function PenataanLahanScreen() {
   }, []);
 
   useEffect(() => {
-    loadData();
+    const timeout = setTimeout(() => {
+      void loadData();
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [loadData]);
+
+  const refreshData = useCallback(async () => {
+    setLoading(true);
+    await loadData();
   }, [loadData]);
 
   function resetForm() {
@@ -149,7 +156,7 @@ export default function PenataanLahanScreen() {
           onPress: async () => {
             try {
               await setPlotStatus(plot.id, nextStatus);
-              await loadData();
+              await refreshData();
             } catch (e) {
               Alert.alert('Gagal mengubah status', e instanceof Error ? e.message : 'Terjadi kesalahan');
             }

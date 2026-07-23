@@ -58,7 +58,6 @@ export default function PetaniDashboard() {
   const loadDashboard = useCallback(async () => {
     if (!profile) return;
 
-    setLoading(true);
     try {
       const [nextPlots, nextTasks, nextLocation] = await Promise.all([
         fetchAssignedPlots(profile.id),
@@ -102,7 +101,15 @@ export default function PetaniDashboard() {
   }, [profile]);
 
   useEffect(() => {
-    loadDashboard();
+    const timeout = setTimeout(() => {
+      void loadDashboard();
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [loadDashboard]);
+
+  const refreshDashboard = useCallback(async () => {
+    setLoading(true);
+    await loadDashboard();
   }, [loadDashboard]);
 
   function handleLogout() {
@@ -151,7 +158,7 @@ export default function PetaniDashboard() {
                 <ThemedText type="small" themeColor="textSecondary">
                   {location?.message ?? 'Lokasi belum tersedia.'}
                 </ThemedText>
-                <PrimaryButton label="Coba Lagi" onPress={loadDashboard} />
+                <PrimaryButton label="Coba Lagi" onPress={refreshDashboard} />
               </View>
             ) : nearest ? (
               <View style={styles.sectionGap}>

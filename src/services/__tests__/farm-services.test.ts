@@ -1,10 +1,13 @@
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
-);
-jest.mock('../supabase', () => ({ supabase: {} }));
-
 import { buildEvidencePath } from '../evidence';
 import { mapPlotRow, toPlotInsert } from '../plots';
+
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  clear: jest.fn(),
+  getItem: jest.fn(),
+  removeItem: jest.fn(),
+  setItem: jest.fn(),
+}));
+jest.mock('../supabase', () => ({ supabase: {} }));
 
 describe('plot service mapping', () => {
   test('maps Supabase lahan row into app plot shape', () => {
