@@ -49,11 +49,38 @@ function submissionReadingErrorMessage(): string {
   return 'Akurasi GPS berubah. Bukti belum dikirim; pindah ke area terbuka lalu coba lagi.';
 }
 
+const TASK_LOAD_ERROR =
+  'Detail task belum dapat dimuat. Silakan coba lagi.';
+const TASK_ASSIGNMENT_ERROR =
+  'Task ini tidak ditugaskan kepada akun Anda.';
+const EVIDENCE_UPLOAD_ERROR =
+  'Bukti belum dapat diunggah. Periksa koneksi lalu coba lagi.';
+const TASK_COMPLETION_ERROR =
+  'Bukti sudah tersimpan, tetapi task belum dapat diselesaikan. Coba lagi tanpa mengunggah ulang.';
+
+type LocationSettingsStatus = Extract<
+  CurrentLocationResult['status'],
+  'permission-blocked' | 'services-disabled'
+>;
+
+function locationSettingsStatus(
+  result?: CurrentLocationResult
+): LocationSettingsStatus | null {
+  if (
+    result?.status === 'permission-blocked' ||
+    result?.status === 'services-disabled'
+  ) {
+    return result.status;
+  }
+  return null;
+}
+
 export function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const taskId = Array.isArray(id) ? id[0] : id;
   const router = useRouter();
   const { profile } = useAuth();
+  const farmerId = profile?.id;
   const {
     state: locationActionState,
     run: runLocationAction,
@@ -71,7 +98,10 @@ export function TaskDetailScreen() {
   const [unlocked, setUnlocked] = useState(false);
   const [unlockLocationError, setUnlockLocationError] = useState<string | null>(null);
   const [submitLocationError, setSubmitLocationError] = useState<string | null>(null);
-  const [submitCanOpenSettings, setSubmitCanOpenSettings] = useState(false);
+  const [submitSettingsStatus, setSubmitSettingsStatus] =
+    useState<LocationSettingsStatus | null>(null);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [completionPending, setCompletionPending] = useState(false);
   const [evidenceCount, setEvidenceCount] = useState(0);
   const [asset, setAsset] = useState<EvidenceAsset | null>(null);
   const [note, setNote] = useState('');
@@ -106,7 +136,9 @@ export function TaskDetailScreen() {
     setUnlocked(false);
     setUnlockLocationError(null);
     setSubmitLocationError(null);
-    setSubmitCanOpenSettings(false);
+    setSubmitSettingsStatus(null);
+    setSubmissionError(null);
+    setCompletionPending(false);
     setEvidenceCount(0);
     setAsset(null);
     setNote('');
@@ -119,6 +151,12 @@ export function TaskDetailScreen() {
 
     try {
       const nextTask = await fetchTaskDetail(taskId);
+      if (loadVersion.current !== version) return;
+      if (!farmerId || nextTask.assignedTo !== farmerId) {
+        setLoadError(TASK_ASSIGNMENT_ERROR);
+        return;
+      }
+
       const [nextPlot, nextEvidenceCount] = await Promise.all([
         fetchPlotById(nextTask.lahanId),
         countTaskEvidence(nextTask.id),
@@ -129,13 +167,13 @@ export function TaskDetailScreen() {
       setPlot(nextPlot);
       setEvidenceCount(nextEvidenceCount);
       setUnlocked(!nextTask.requiresLocation);
-    } catch (error) {
+    } catch {
       if (loadVersion.current !== version) return;
-      setLoadError(error instanceof Error ? error.message : 'Terjadi kesalahan');
+      setLoadError(TASK_LOAD_ERROR);
     } finally {
       if (loadVersion.current === version) setLoading(false);
     }
-  }, [resetLocationAction, taskId]);
+  }, [farmerId, resetLocationAction, taskId]);
 
   useEffect(() => {
     void loadDetail();
@@ -150,6 +188,7 @@ export function TaskDetailScreen() {
 
   async function handleUnlock() {
     if (!task || !plot) return;
+    if (completionPending) return;
     if (!task.requiresLocation) {
       setUnlocked(true);
       return;
@@ -160,7 +199,8 @@ export function TaskDetailScreen() {
     unlockActive.current = true;
     setUnlockLocationError(null);
     setSubmitLocationError(null);
-    setSubmitCanOpenSettings(false);
+    setSubmitSettingsStatus(null);
+    setSubmissionError(null);
 
     try {
       const result = await runLocationAction({
@@ -207,12 +247,45 @@ export function TaskDetailScreen() {
     result?: CurrentLocationResult
   ) {
     setSubmitLocationError(message);
-    setSubmitCanOpenSettings(Boolean(result?.canOpenSettings));
+    setSubmitSettingsStatus(locationSettingsStatus(result));
   }
 
   async function handleSubmit() {
-    if (!task || !plot || !profile) return;
+    if (!task || !plot || !farmerId) return;
     if (submissionActive.current || unlockActive.current) return;
+
+    if (completionPending) {
+      const version = ++submissionVersion.current;
+      submissionActive.current = true;
+      setSubmitting(true);
+      setSubmissionError(null);
+
+      try {
+        await markTaskComplete(task.id);
+        if (submissionVersion.current !== version) return;
+
+        setCompletionPending(false);
+        Alert.alert(
+          'Bukti tersimpan',
+          'Task selesai dan bukti pekerjaan sudah diunggah.',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.replace('/(app)/petani'),
+            },
+          ]
+        );
+      } catch {
+        if (submissionVersion.current !== version) return;
+        setSubmissionError(TASK_COMPLETION_ERROR);
+      } finally {
+        if (submissionVersion.current === version) {
+          submissionActive.current = false;
+          setSubmitting(false);
+        }
+      }
+      return;
+    }
 
     const validation = validateEvidenceUpload({
       unlocked,
@@ -228,8 +301,10 @@ export function TaskDetailScreen() {
     submissionActive.current = true;
     setSubmitting(true);
     setSubmitLocationError(null);
-    setSubmitCanOpenSettings(false);
+    setSubmitSettingsStatus(null);
+    setSubmissionError(null);
 
+    let evidenceUploaded = false;
     try {
       let submissionLocation: GrantedLocationResult | null = unlockReading;
       if (task.requiresLocation) {
@@ -278,7 +353,7 @@ export function TaskDetailScreen() {
 
       await uploadTaskEvidence({
         taskId: task.id,
-        farmerId: profile.id,
+        farmerId,
         lahanId: plot.id,
         photoUri: asset.uri,
         contentType: asset.mimeType,
@@ -287,18 +362,25 @@ export function TaskDetailScreen() {
         lng: submissionLocation?.coords.longitude ?? null,
         aiPlaceholderSummary: analysisSummary,
       });
+      evidenceUploaded = true;
+      if (submissionVersion.current === version) {
+        setCompletionPending(true);
+      }
       await markTaskComplete(task.id);
       if (submissionVersion.current !== version) return;
 
+      setCompletionPending(false);
       Alert.alert('Bukti tersimpan', 'Task selesai dan bukti pekerjaan sudah diunggah.', [
         { text: 'OK', onPress: () => router.replace('/(app)/petani') },
       ]);
-    } catch (error) {
+    } catch {
       if (submissionVersion.current !== version) return;
-      Alert.alert(
-        'Gagal upload bukti',
-        error instanceof Error ? error.message : 'Terjadi kesalahan'
-      );
+      if (evidenceUploaded) {
+        setCompletionPending(true);
+        setSubmissionError(TASK_COMPLETION_ERROR);
+      } else {
+        setSubmissionError(EVIDENCE_UPLOAD_ERROR);
+      }
     } finally {
       if (submissionVersion.current === version) {
         submissionActive.current = false;
@@ -339,8 +421,12 @@ export function TaskDetailScreen() {
           title="Task siap dikerjakan"
           message="Lokasi Anda sudah berada di dalam radius lahan."
           meta={`Jarak ke lahan ${formatDistance(geofence.distanceM)}`}
-          actionLabel={submitting ? undefined : 'Periksa Lagi'}
-          onAction={submitting ? undefined : handleUnlock}
+          actionLabel={
+            submitting || completionPending ? undefined : 'Periksa Lagi'
+          }
+          onAction={
+            submitting || completionPending ? undefined : handleUnlock
+          }
         />
       );
     }
@@ -362,6 +448,7 @@ export function TaskDetailScreen() {
       const result = locationActionState.result;
       const blocked = result.status === 'permission-blocked';
       const servicesDisabled = result.status === 'services-disabled';
+      const settingsStatus = locationSettingsStatus(result);
       return (
         <LocationActionCard
           state={blocked || servicesDisabled ? 'danger' : 'warning'}
@@ -375,11 +462,11 @@ export function TaskDetailScreen() {
                   : 'Lokasi belum dapat diperiksa'
           }
           message={result.message ?? 'Lokasi belum dapat diperiksa.'}
-          actionLabel={result.canOpenSettings ? 'Buka Pengaturan' : 'Periksa Lagi'}
+          actionLabel={settingsStatus ? 'Buka Pengaturan' : 'Periksa Lagi'}
           onAction={
-            result.canOpenSettings
+            settingsStatus
               ? () => {
-                  void openLocationSettings();
+                  void openLocationSettings(settingsStatus);
                 }
               : handleUnlock
           }
@@ -445,7 +532,9 @@ export function TaskDetailScreen() {
                   asset={asset}
                   onChange={setAsset}
                   disabled={
-                    submitting || locationActionState.status === 'checking'
+                    submitting ||
+                    completionPending ||
+                    locationActionState.status === 'checking'
                   }
                 />
               </SurfaceCard>
@@ -458,29 +547,44 @@ export function TaskDetailScreen() {
                   placeholder: 'Contoh: Saluran air sudah dibersihkan',
                   multiline: true,
                   editable:
-                    !submitting && locationActionState.status !== 'checking',
+                    !submitting &&
+                    !completionPending &&
+                    locationActionState.status !== 'checking',
                 }}
               />
               {submitLocationError ? (
                 <LocationActionCard
-                  state={submitCanOpenSettings ? 'danger' : 'warning'}
+                  state={submitSettingsStatus ? 'danger' : 'warning'}
                   title="Bukti belum dikirim"
                   message={submitLocationError}
                   actionLabel={
-                    submitCanOpenSettings ? 'Buka Pengaturan' : undefined
+                    submitSettingsStatus ? 'Buka Pengaturan' : undefined
                   }
                   onAction={
-                    submitCanOpenSettings
+                    submitSettingsStatus
                       ? () => {
-                          void openLocationSettings();
+                          void openLocationSettings(submitSettingsStatus);
                         }
                       : undefined
                   }
                 />
               ) : null}
+              {submissionError ? (
+                <LocationActionCard
+                  state="warning"
+                  title={
+                    completionPending
+                      ? 'Bukti tersimpan, task belum selesai'
+                      : 'Bukti belum tersimpan'
+                  }
+                  message={submissionError}
+                />
+              ) : null}
               <AppButton
                 label={
-                  task.requiresLocation
+                  completionPending
+                    ? 'Coba Selesaikan Task'
+                    : task.requiresLocation
                     ? 'Periksa GPS & Kirim Bukti'
                     : 'Kirim Bukti'
                 }
