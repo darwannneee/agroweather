@@ -1,13 +1,5 @@
 import { Platform } from 'react-native';
 
-const legacyLightPalette = {
-  text: '#203026',
-  background: '#F6F8F3',
-  backgroundElement: '#FFFFFF',
-  backgroundSelected: '#DFE7DC',
-  textSecondary: '#657165',
-} as const;
-
 export const Colors = {
   forest: '#1F542E',
   forestPressed: '#173F23',
@@ -28,18 +20,9 @@ export const Colors = {
   dangerBackground: '#FDE7E1',
   dangerBorder: '#EBC1B6',
   dangerText: '#633027',
-  /** @deprecated Remove with the legacy themed components in Task 14. */
-  light: legacyLightPalette,
-  /** @deprecated Remove with the legacy themed components in Task 14. */
-  dark: legacyLightPalette,
 } as const;
 
-/** @deprecated Remove with the legacy themed components in Task 14. */
-export type ThemeColor = keyof typeof Colors.light;
-
 export const Spacing = {
-  /** @deprecated Remove with the legacy spacing callers in Task 14. */
-  half: 2,
   one: 4,
   two: 8,
   three: 12,
