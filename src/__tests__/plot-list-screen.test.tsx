@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 
-import PenataanLahanScreen from '@/app/(app)/penataan-lahan';
+import { PlotListScreen } from '@/app/(app)/penataan-lahan';
 import type { FarmPlot } from '@/lib/farm-types';
 
 jest.mock('expo-router', () => {
@@ -14,6 +14,14 @@ jest.mock('expo-router', () => {
     },
     useRouter: () => ({ push }),
     __push: push,
+  };
+});
+
+jest.mock('@/components/domain/role-guard', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    RoleGuard: ({ children }: { children: React.ReactNode }) =>
+      React.createElement(React.Fragment, null, children),
   };
 });
 
@@ -70,7 +78,7 @@ describe('PenataanLahanScreen', () => {
   });
 
   test('counts two plots assigned to the same farmer as one assigned farmer', async () => {
-    render(<PenataanLahanScreen />);
+    render(<PlotListScreen />);
 
     await screen.findByText('Sawah Utara');
 
@@ -88,7 +96,7 @@ describe('PenataanLahanScreen', () => {
         })
     );
 
-    render(<PenataanLahanScreen />);
+    render(<PlotListScreen />);
 
     expect(screen.getByText('Memuat data lahan…')).toBeOnTheScreen();
     expect(screen.queryByText('Total')).toBeNull();
@@ -114,7 +122,7 @@ describe('PenataanLahanScreen', () => {
         })
     );
     const alertSpy = jest.spyOn(Alert, 'alert');
-    const { unmount } = render(<PenataanLahanScreen />);
+    const { unmount } = render(<PlotListScreen />);
 
     await screen.findByText('Sawah Utara');
     fireEvent.press(screen.getByRole('button', { name: 'Nonaktifkan Sawah Utara' }));

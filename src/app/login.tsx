@@ -1,100 +1,176 @@
 import { useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
-import { Link, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
-import { FormField, ThemedInput } from '@/components/form-field';
-import { PrimaryButton } from '@/components/primary-button';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { AppButton } from '@/components/ui/app-button';
+import { AppScreen } from '@/components/ui/app-screen';
+import { AppText } from '@/components/ui/app-text';
+import { FormField } from '@/components/ui/form-field';
+import { ScreenHeader } from '@/components/ui/screen-header';
+import { SurfaceCard } from '@/components/ui/surface-card';
+import { Colors, Radius, Spacing } from '@/constants/theme';
+import {
+  hasErrors,
+  validateLoginForm,
+  type LoginFormErrors,
+} from '@/lib/validation';
 import { useAuth } from '@/services/auth-context';
-import { hasErrors, validateLoginForm, type LoginFormErrors } from '@/lib/validation';
+
+const SAFE_AUTH_ERROR =
+  'Tidak dapat masuk. Periksa email, password, dan koneksi lalu coba lagi.';
+
+export function safeAuthErrorMessage(_error: unknown): string {
+  return SAFE_AUTH_ERROR;
+}
 
 export default function LoginScreen() {
   const { signIn } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [errors, setErrors] = useState<LoginFormErrors>({ email: null, password: null });
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [errors, setErrors] = useState<LoginFormErrors>({
+    email: null,
+    password: null,
+  });
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  function handleEmailChange(value: string) {
+    setEmail(value);
+    setSubmitError(null);
+    if (errors.email) {
+      setErrors((current) => ({ ...current, email: null }));
+    }
+  }
+
+  function handlePasswordChange(value: string) {
+    setPassword(value);
+    setSubmitError(null);
+    if (errors.password) {
+      setErrors((current) => ({ ...current, password: null }));
+    }
+  }
+
   async function handleSubmit() {
-    const newErrors = validateLoginForm({ email, password });
-    setErrors(newErrors);
-    if (hasErrors(newErrors)) return;
+    if (submitting) return;
+
+    setSubmitError(null);
+    const nextErrors = validateLoginForm({ email, password });
+    setErrors(nextErrors);
+    if (hasErrors(nextErrors)) return;
 
     setSubmitting(true);
     try {
       await signIn(email.trim(), password);
       router.replace('/');
-    } catch (e) {
-      Alert.alert('Gagal masuk', e instanceof Error ? e.message : 'Terjadi kesalahan');
+    } catch (error) {
+      setSubmitError(safeAuthErrorMessage(error));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.header}>
-          <ThemedText type="title">AgroWeather</ThemedText>
-          <ThemedText type="default" themeColor="textSecondary">
-            Masuk untuk melanjutkan
-          </ThemedText>
+    <AppScreen>
+      <ScreenHeader
+        eyebrow="Field First"
+        title="Masuk ke AgroWeather"
+        description="Akses tugas lapangan dan operasional lahan dari satu tempat."
+      />
+
+      <SurfaceCard style={styles.form}>
+        <FormField
+          label="Email"
+          error={errors.email}
+          inputProps={{
+            accessibilityLabel: 'Email',
+            value: email,
+            onChangeText: handleEmailChange,
+            placeholder: 'email@contoh.com',
+            keyboardType: 'email-address',
+            autoCapitalize: 'none',
+            autoCorrect: false,
+            editable: !submitting,
+          }}
+        />
+
+        <View style={styles.passwordField}>
+          <FormField
+            label="Password"
+            error={errors.password}
+            inputProps={{
+              accessibilityLabel: 'Password',
+              value: password,
+              onChangeText: handlePasswordChange,
+              placeholder: 'Masukkan password',
+              secureTextEntry: !passwordVisible,
+              autoCapitalize: 'none',
+              autoCorrect: false,
+              editable: !submitting,
+            }}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              passwordVisible ? 'Sembunyikan password' : 'Tampilkan password'
+            }
+            disabled={submitting}
+            hitSlop={8}
+            onPress={() => setPasswordVisible((visible) => !visible)}
+            style={({ pressed }) => [
+              styles.visibilityButton,
+              pressed && styles.visibilityPressed,
+            ]}
+          >
+            <AppText variant="smallStrong" color={Colors.forest}>
+              {passwordVisible ? 'Sembunyikan' : 'Tampilkan'}
+            </AppText>
+          </Pressable>
         </View>
 
-        <View style={styles.form}>
-          <FormField label="Email" error={errors.email}>
-            {({ hasError }) => (
-              <ThemedInput
-                value={email}
-                onChangeText={setEmail}
-                placeholder="email@contoh.com"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                hasError={hasError}
-              />
-            )}
-          </FormField>
-
-          <FormField label="Password" error={errors.password}>
-            {({ hasError }) => (
-              <ThemedInput
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••"
-                secureTextEntry
-                hasError={hasError}
-              />
-            )}
-          </FormField>
-
-          <PrimaryButton label="Masuk" onPress={handleSubmit} loading={submitting} />
-
-          <View style={styles.footer}>
-            <ThemedText type="small">Belum punya akun? </ThemedText>
-            <Link href="/register" asChild>
-              <ThemedText type="linkPrimary">Daftar di sini</ThemedText>
-            </Link>
+        {submitError ? (
+          <View accessibilityLiveRegion="polite" aria-live="polite">
+            <AppText variant="small" color={Colors.dangerText}>
+              {submitError}
+            </AppText>
           </View>
-        </View>
-      </SafeAreaView>
-    </ThemedView>
+        ) : null}
+
+        <AppButton
+          label="Masuk"
+          variant="forest"
+          loading={submitting}
+          disabled={submitting}
+          onPress={() => void handleSubmit()}
+        />
+      </SurfaceCard>
+
+      <AppText variant="small" color={Colors.muted} style={styles.accountNote}>
+        Akun AgroWeather dibuat dan dikelola oleh tim internal.
+      </AppText>
+    </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  safe: { flex: 1, paddingHorizontal: Spacing.four },
-  header: { marginTop: Spacing.five, gap: Spacing.one, alignItems: 'center' },
-  form: { marginTop: Spacing.five, gap: Spacing.three },
-  footer: {
-    marginTop: Spacing.two,
-    flexDirection: 'row',
+  form: {
+    gap: Spacing.four,
+  },
+  passwordField: {
+    gap: Spacing.two,
+  },
+  visibilityButton: {
+    minHeight: 44,
+    alignSelf: 'flex-end',
     justifyContent: 'center',
-    alignItems: 'center',
+    paddingHorizontal: Spacing.three,
+    borderRadius: Radius.button,
+  },
+  visibilityPressed: {
+    backgroundColor: Colors.canvas,
+  },
+  accountNote: {
+    textAlign: 'center',
   },
 });

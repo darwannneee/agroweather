@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
+import { RoleGuard } from '@/components/domain/role-guard';
 import {
   EvidencePicker,
   type EvidenceAsset,
@@ -48,7 +49,7 @@ function submissionReadingErrorMessage(): string {
   return 'Akurasi GPS berubah. Bukti belum dikirim; pindah ke area terbuka lalu coba lagi.';
 }
 
-export default function TaskDetailScreen() {
+export function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const taskId = Array.isArray(id) ? id[0] : id;
   const router = useRouter();
@@ -492,5 +493,13 @@ export default function TaskDetailScreen() {
         </>
       )}
     </AppScreen>
+  );
+}
+
+export default function TaskDetailRoute() {
+  return (
+    <RoleGuard requiredRole="farmer">
+      <TaskDetailScreen />
+    </RoleGuard>
   );
 }

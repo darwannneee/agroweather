@@ -1,18 +1,25 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useColorScheme } from 'react-native';
 
+import { Colors } from '@/constants/theme';
 import { AuthProvider } from '@/services/auth-context';
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
   return (
     <AuthProvider>
-      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-      <Stack screenOptions={{ headerShown: false }}>
+      <StatusBar style="dark" backgroundColor={Colors.canvas} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: Colors.canvas },
+          headerStyle: { backgroundColor: Colors.surface },
+          headerTintColor: Colors.forest,
+          headerTitleStyle: { color: Colors.ink },
+          headerShadowVisible: false,
+        }}
+      >
         <Stack.Screen name="index" />
-        <Stack.Screen name="login" options={{ headerShown: true, title: 'Masuk' }} />
-        <Stack.Screen name="register" options={{ headerShown: true, title: 'Daftar Akun' }} />
+        <Stack.Screen name="login" />
         <Stack.Screen name="(app)" />
       </Stack>
     </AuthProvider>

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
-import PlotFormScreen from '@/app/(app)/penataan-lahan/form';
+import { PlotFormContent } from '@/app/(app)/penataan-lahan/form';
 import type { FarmPlot } from '@/lib/farm-types';
 
 jest.mock('expo-router', () => {
@@ -17,6 +17,14 @@ jest.mock('expo-router', () => {
     __setParams: (next: typeof params) => {
       params = next;
     },
+  };
+});
+
+jest.mock('@/components/domain/role-guard', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    RoleGuard: ({ children }: { children: React.ReactNode }) =>
+      React.createElement(React.Fragment, null, children),
   };
 });
 
@@ -153,7 +161,7 @@ describe('PlotFormScreen', () => {
   });
 
   test('requests GPS only on action and saves its coordinate only after map confirmation', async () => {
-    render(<PlotFormScreen />);
+    render(<PlotFormContent />);
 
     expect(await screen.findByText('Tambah Lahan')).toBeOnTheScreen();
     expect(locationMocks.__run).not.toHaveBeenCalled();
@@ -181,7 +189,7 @@ describe('PlotFormScreen', () => {
 
   test('loads an edit route and calls update without creating', async () => {
     routerMocks.__setParams({ plotId: 'plot-1' });
-    render(<PlotFormScreen />);
+    render(<PlotFormContent />);
 
     expect(await screen.findByText('Edit Lahan')).toBeOnTheScreen();
     expect(screen.getByLabelText('Nama Lahan')).toHaveProp('value', 'Sawah Lama');
@@ -201,12 +209,12 @@ describe('PlotFormScreen', () => {
 
   test('resets edit values when the route changes to create', async () => {
     routerMocks.__setParams({ plotId: 'plot-1' });
-    const { rerender } = render(<PlotFormScreen />);
+    const { rerender } = render(<PlotFormContent />);
     expect(await screen.findByText('Edit Lahan')).toBeOnTheScreen();
     expect(screen.getByLabelText('Nama Lahan')).toHaveProp('value', 'Sawah Lama');
 
     routerMocks.__setParams({});
-    rerender(<PlotFormScreen />);
+    rerender(<PlotFormContent />);
 
     expect(await screen.findByText('Tambah Lahan')).toBeOnTheScreen();
     await waitFor(() => {
@@ -216,7 +224,7 @@ describe('PlotFormScreen', () => {
 
   test('shows a retry action when form loading fails', async () => {
     authMocks.fetchFarmers.mockRejectedValueOnce(new Error('offline'));
-    render(<PlotFormScreen />);
+    render(<PlotFormContent />);
 
     expect(await screen.findByText('Form lahan belum tersedia')).toBeOnTheScreen();
     fireEvent.press(screen.getByRole('button', { name: 'Coba Lagi' }));

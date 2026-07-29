@@ -18,6 +18,11 @@ export function validatePassword(password: string): string | null {
   return null;
 }
 
+export function validateLoginPassword(password: string): string | null {
+  if (!password) return 'Password wajib diisi';
+  return null;
+}
+
 export function validateNama(name: string): string | null {
   const trimmed = name.trim();
   if (!trimmed) return 'Nama wajib diisi';
@@ -37,7 +42,7 @@ export type LoginFormErrors = { email: string | null; password: string | null };
 export function validateLoginForm(values: LoginFormValues): LoginFormErrors {
   return {
     email: validateEmail(values.email),
-    password: validatePassword(values.password),
+    password: validateLoginPassword(values.password),
   };
 }
 

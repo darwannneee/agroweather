@@ -3,6 +3,7 @@ import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { usePreventRemove } from '@react-navigation/native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 
+import { RoleGuard } from '@/components/domain/role-guard';
 import { MapPicker } from '@/components/domain/map-picker';
 import { AppButton } from '@/components/ui/app-button';
 import { AppScreen } from '@/components/ui/app-screen';
@@ -66,7 +67,7 @@ function formFromPlot(plot: FarmPlot): PlotFormValues {
   };
 }
 
-export default function PlotFormScreen() {
+export function PlotFormContent() {
   const rawPlotId = useLocalSearchParams().plotId;
   const plotId = normalizePlotIdParam(rawPlotId);
   const router = useRouter();
@@ -341,6 +342,14 @@ export default function PlotFormScreen() {
         onPress={handleSave}
       />
     </AppScreen>
+  );
+}
+
+export default function PlotFormRoute() {
+  return (
+    <RoleGuard requiredRole="internal">
+      <PlotFormContent />
+    </RoleGuard>
   );
 }
 

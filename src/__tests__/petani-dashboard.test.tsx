@@ -7,7 +7,7 @@ import {
   within,
 } from '@testing-library/react-native';
 
-import PetaniDashboard from '@/app/(app)/petani';
+import { PetaniDashboard } from '@/app/(app)/petani';
 import type { FarmPlot, FarmTask } from '@/lib/farm-types';
 import type { CurrentLocationResult } from '@/services/location';
 
@@ -16,6 +16,14 @@ jest.mock('expo-router', () => {
   return {
     useRouter: () => ({ push }),
     __push: push,
+  };
+});
+
+jest.mock('@/components/domain/role-guard', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    RoleGuard: ({ children }: { children: React.ReactNode }) =>
+      React.createElement(React.Fragment, null, children),
   };
 });
 

@@ -1,24 +1,18 @@
 import { Redirect } from 'expo-router';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { useAuth } from '@/services/auth-context';
+import { AppScreen } from '@/components/ui/app-screen';
+import { FeedbackState } from '@/components/ui/feedback-state';
 import { pickDashboardRoute } from '@/lib/routing';
+import { useAuth } from '@/services/auth-context';
 
 export default function RootIndex() {
   const { session, profile, loading } = useAuth();
 
   if (loading) {
     return (
-      <ThemedView style={styles.container}>
-        <View style={styles.center}>
-          <ActivityIndicator size="large" />
-          <ThemedText type="small" style={{ marginTop: 12 }}>
-            Memuat...
-          </ThemedText>
-        </View>
-      </ThemedView>
+      <AppScreen>
+        <FeedbackState title="Memuat aplikasi…" loading />
+      </AppScreen>
     );
   }
 
@@ -28,8 +22,3 @@ export default function RootIndex() {
 
   return <Redirect href={pickDashboardRoute(profile.role)} />;
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-});

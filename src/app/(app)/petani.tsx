@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
+import { RoleGuard } from '@/components/domain/role-guard';
 import { LocationActionCard } from '@/components/domain/location-action-card';
 import { TaskCard, type TaskCardState } from '@/components/domain/task-card';
 import { AppButton } from '@/components/ui/app-button';
@@ -96,7 +97,7 @@ function taskState(
   return result.unlocked ? 'ready' : 'outside';
 }
 
-export default function PetaniDashboard() {
+export function PetaniDashboard() {
   const { profile, signOut } = useAuth();
   const router = useRouter();
   const {
@@ -497,6 +498,14 @@ export default function PetaniDashboard() {
         </>
       )}
     </AppScreen>
+  );
+}
+
+export default function PetaniScreen() {
+  return (
+    <RoleGuard requiredRole="farmer">
+      <PetaniDashboard />
+    </RoleGuard>
   );
 }
 

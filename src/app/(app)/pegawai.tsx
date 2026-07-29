@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 
+import { RoleGuard } from '@/components/domain/role-guard';
 import { PlotStats } from '@/components/domain/plot-stats';
 import { AppButton } from '@/components/ui/app-button';
 import { AppScreen } from '@/components/ui/app-screen';
@@ -125,4 +126,10 @@ const styles = StyleSheet.create({
   },
 });
 
-export default PegawaiDashboard;
+export default function PegawaiScreen() {
+  return (
+    <RoleGuard requiredRole="internal">
+      <PegawaiDashboard />
+    </RoleGuard>
+  );
+}

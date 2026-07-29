@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 
+import { RoleGuard } from '@/components/domain/role-guard';
 import { PlotCard } from '@/components/domain/plot-card';
 import { PlotStats } from '@/components/domain/plot-stats';
 import { AppButton } from '@/components/ui/app-button';
@@ -11,7 +12,7 @@ import { ScreenHeader } from '@/components/ui/screen-header';
 import type { FarmPlot } from '@/lib/farm-types';
 import { fetchPlots, setPlotStatus } from '@/services/plots';
 
-export default function PenataanLahanScreen() {
+export function PlotListScreen() {
   const router = useRouter();
   const [plots, setPlots] = useState<FarmPlot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -144,5 +145,13 @@ export default function PenataanLahanScreen() {
         </>
       )}
     </AppScreen>
+  );
+}
+
+export default function PlotListRoute() {
+  return (
+    <RoleGuard requiredRole="internal">
+      <PlotListScreen />
+    </RoleGuard>
   );
 }

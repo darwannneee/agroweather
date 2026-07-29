@@ -1,5 +1,6 @@
 import {
   validateEmail,
+  validateLoginPassword,
   validatePassword,
   validateNama,
   validateRole,
@@ -52,6 +53,16 @@ describe('validatePassword', () => {
 
   test('accepts mixed letters+digits, 8+ chars', () => {
     expect(validatePassword('petani123')).toBeNull();
+  });
+});
+
+describe('validateLoginPassword', () => {
+  test('rejects an empty login password', () => {
+    expect(validateLoginPassword('')).toBe('Password wajib diisi');
+  });
+
+  test('accepts a short non-empty password for an existing account', () => {
+    expect(validateLoginPassword('x')).toBeNull();
   });
 });
 
@@ -109,10 +120,10 @@ describe('validateLoginForm', () => {
     ).toEqual({ email: null, password: null });
   });
 
-  test('returns mixed errors for partial invalid input', () => {
+  test('does not apply registration strength rules to login', () => {
     expect(
       validateLoginForm({ email: 'budi@gmail.com', password: 'short' })
-    ).toEqual({ email: null, password: 'Password minimal 8 karakter' });
+    ).toEqual({ email: null, password: null });
   });
 });
 
