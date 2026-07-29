@@ -18,12 +18,15 @@ export default function PenataanLahanScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mutatingId, setMutatingId] = useState<string | null>(null);
   const requestVersion = useRef(0);
+  const focusGeneration = useRef(0);
 
   const stats = useMemo(
     () => ({
       total: plots.length,
       active: plots.filter((plot) => plot.status === 'aktif').length,
-      assigned: plots.filter((plot) => plot.farmerId).length,
+      assigned: new Set(
+        plots.map((plot) => plot.farmerId).filter((farmerId) => farmerId !== null)
+      ).size,
     }),
     [plots]
   );
@@ -50,14 +53,18 @@ export default function PenataanLahanScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      focusGeneration.current += 1;
+      setMutatingId(null);
       void loadPlots();
       return () => {
+        focusGeneration.current += 1;
         requestVersion.current += 1;
       };
     }, [loadPlots])
   );
 
   function handleToggleStatus(plot: FarmPlot) {
+    const generation = focusGeneration.current;
     const nextStatus = plot.status === 'aktif' ? 'tidak aktif' : 'aktif';
     Alert.alert(
       nextStatus === 'aktif' ? 'Aktifkan Lahan' : 'Nonaktifkan Lahan',
@@ -67,14 +74,21 @@ export default function PenataanLahanScreen() {
         {
           text: 'Ubah',
           onPress: async () => {
+            if (focusGeneration.current !== generation) return;
             setMutatingId(plot.id);
             try {
               await setPlotStatus(plot.id, nextStatus);
-              await loadPlots();
+              if (focusGeneration.current === generation) {
+                await loadPlots();
+              }
             } catch {
-              Alert.alert('Status belum berubah', 'Periksa koneksi lalu coba lagi.');
+              if (focusGeneration.current === generation) {
+                Alert.alert('Status belum berubah', 'Periksa koneksi lalu coba lagi.');
+              }
             } finally {
-              setMutatingId(null);
+              if (focusGeneration.current === generation) {
+                setMutatingId(null);
+              }
             }
           },
         },
@@ -96,8 +110,6 @@ export default function PenataanLahanScreen() {
         }
       />
 
-      <PlotStats total={stats.total} active={stats.active} assigned={stats.assigned} />
-
       {loading ? (
         <FeedbackState title="Memuat data lahan…" loading />
       ) : loadError ? (
@@ -113,20 +125,23 @@ export default function PenataanLahanScreen() {
           message="Tambahkan lahan pertama untuk memulai pemetaan."
         />
       ) : (
-        plots.map((plot) => (
-          <PlotCard
-            key={plot.id}
-            plot={plot}
-            statusLoading={mutatingId === plot.id}
-            onEdit={() =>
-              router.push({
-                pathname: '/(app)/penataan-lahan/form',
-                params: { plotId: plot.id },
-              })
-            }
-            onToggleStatus={() => handleToggleStatus(plot)}
-          />
-        ))
+        <>
+          <PlotStats total={stats.total} active={stats.active} assigned={stats.assigned} />
+          {plots.map((plot) => (
+            <PlotCard
+              key={plot.id}
+              plot={plot}
+              statusLoading={mutatingId === plot.id}
+              onEdit={() =>
+                router.push({
+                  pathname: '/(app)/penataan-lahan/form',
+                  params: { plotId: plot.id },
+                })
+              }
+              onToggleStatus={() => handleToggleStatus(plot)}
+            />
+          ))}
+        </>
       )}
     </AppScreen>
   );
