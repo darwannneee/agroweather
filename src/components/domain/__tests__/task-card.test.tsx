@@ -1,0 +1,63 @@
+import { fireEvent, render, screen } from '@testing-library/react-native';
+
+import type { FarmTask } from '@/lib/farm-types';
+
+import { TaskCard, type TaskCardState } from '../task-card';
+
+const task: FarmTask = {
+  id: 'task-a',
+  lahanId: 'plot-a',
+  assignedTo: 'farmer-1',
+  assignedBy: 'internal-1',
+  judul: 'Bersihkan saluran',
+  deskripsi: 'Bersihkan saluran air di sisi utara.',
+  status: 'belum_dikerjakan',
+  deadline: '2026-08-02',
+  requiresLocation: true,
+  unlockedAt: null,
+};
+
+describe('TaskCard', () => {
+  test('announces that location must be checked using the configured radius and deadline', () => {
+    const onPress = jest.fn();
+    render(
+      <TaskCard
+        task={task}
+        plotName="Sawah A"
+        state="check-location"
+        radiusM={750}
+        onPress={onPress}
+      />
+    );
+
+    expect(screen.getByText('Perlu cek lokasi')).toBeOnTheScreen();
+    expect(screen.getByText('Radius lahan: 750 meter')).toBeOnTheScreen();
+    expect(screen.getByText('Deadline: 2026-08-02')).toBeOnTheScreen();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Buka tugas Bersihkan saluran' }));
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([
+    ['ready', 'Siap'],
+    ['outside', 'Di luar radius'],
+    ['completed', 'Selesai'],
+  ] satisfies [TaskCardState, string][])('renders the %s state as %s', (state, label) => {
+    render(
+      <TaskCard
+        task={task}
+        plotName="Sawah A"
+        state={state}
+        radiusM={625}
+        onPress={() => undefined}
+      />
+    );
+
+    expect(screen.getByText(label)).toBeOnTheScreen();
+    if (state === 'outside') {
+      expect(screen.getByText('Radius lahan: 625 meter')).toBeOnTheScreen();
+    } else {
+      expect(screen.queryByText('Radius lahan: 625 meter')).not.toBeOnTheScreen();
+    }
+  });
+});
