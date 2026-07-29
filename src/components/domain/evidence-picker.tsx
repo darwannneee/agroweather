@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Image, Linking, StyleSheet } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -33,8 +33,21 @@ export function EvidencePicker({
   disabled,
   onChange,
 }: EvidencePickerProps) {
+  const mounted = useRef(true);
+  const operationActive = useRef(false);
+  const operationVersion = useRef(0);
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [permissionBlocked, setPermissionBlocked] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      operationVersion.current += 1;
+      operationActive.current = false;
+    };
+  }, []);
 
   function showPermissionDenied(canAskAgain: boolean) {
     setPermissionError(
@@ -68,57 +81,100 @@ export function EvidencePicker({
     onChange(nextAsset);
   }
 
-  async function pickImage() {
-    clearPermissionError();
+  function beginOperation(clearError: boolean): number | null {
+    if (disabled || !mounted.current || operationActive.current) return null;
+    operationActive.current = true;
+    const version = ++operationVersion.current;
+    if (clearError) clearPermissionError();
+    setBusy(true);
+    return version;
+  }
+
+  function operationIsCurrent(version: number): boolean {
+    return mounted.current && operationVersion.current === version;
+  }
+
+  function finishOperation(version: number) {
+    if (operationVersion.current !== version) return;
+    operationActive.current = false;
+    if (mounted.current) setBusy(false);
+  }
+
+  async function runPicker(
+    requestPermission: () => Promise<{
+      granted: boolean;
+      canAskAgain: boolean;
+    }>,
+    launch: () => Promise<ImagePicker.ImagePickerResult>
+  ) {
+    const version = beginOperation(true);
+    if (version === null) return;
+
     try {
-      const permission =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permission = await requestPermission();
+      if (!operationIsCurrent(version)) return;
       if (!permission.granted) {
         showPermissionDenied(permission.canAskAgain);
         return;
       }
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        quality: 0.8,
-      });
+      const result = await launch();
+      if (!operationIsCurrent(version)) return;
       applyPickerResult(result);
     } catch {
-      showPickerError();
+      if (operationIsCurrent(version)) showPickerError();
+    } finally {
+      finishOperation(version);
     }
+  }
+
+  async function pickImage() {
+    await runPicker(
+      () => ImagePicker.requestMediaLibraryPermissionsAsync(),
+      () =>
+        ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          quality: 0.8,
+        })
+    );
   }
 
   async function captureImage() {
-    clearPermissionError();
-    try {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      if (!permission.granted) {
-        showPermissionDenied(permission.canAskAgain);
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        quality: 0.8,
-      });
-      applyPickerResult(result);
-    } catch {
-      showPickerError();
-    }
+    await runPicker(
+      () => ImagePicker.requestCameraPermissionsAsync(),
+      () =>
+        ImagePicker.launchCameraAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          quality: 0.8,
+        })
+    );
   }
 
   async function openSettings() {
+    const version = beginOperation(false);
+    if (version === null) return;
     try {
       await Linking.openSettings();
     } catch {
-      setPermissionError(
-        'Pengaturan belum dapat dibuka. Buka Pengaturan perangkat secara manual.'
-      );
-      setPermissionBlocked(false);
+      if (operationIsCurrent(version)) {
+        setPermissionError(
+          'Pengaturan belum dapat dibuka. Buka Pengaturan perangkat secara manual.'
+        );
+        setPermissionBlocked(false);
+      }
+    } finally {
+      finishOperation(version);
     }
   }
+
+  function deleteAsset() {
+    if (disabled || operationActive.current) return;
+    onChange(null);
+  }
+
+  const actionsDisabled = Boolean(disabled || busy);
 
   return (
     <SurfaceCard>
@@ -143,26 +199,26 @@ export function EvidencePicker({
           label="Buka Pengaturan"
           variant="secondary"
           onPress={openSettings}
-          disabled={disabled}
+          disabled={actionsDisabled}
         />
       ) : null}
       <AppButton
         label={asset ? 'Ganti Foto Bukti' : 'Pilih Foto Bukti'}
         onPress={pickImage}
-        disabled={disabled}
+        disabled={actionsDisabled}
       />
       <AppButton
         label="Ambil Foto"
         variant="secondary"
         onPress={captureImage}
-        disabled={disabled}
+        disabled={actionsDisabled}
       />
       {asset ? (
         <AppButton
           label="Hapus Foto"
           variant="danger"
-          onPress={() => onChange(null)}
-          disabled={disabled}
+          onPress={deleteAsset}
+          disabled={actionsDisabled}
         />
       ) : null}
     </SurfaceCard>

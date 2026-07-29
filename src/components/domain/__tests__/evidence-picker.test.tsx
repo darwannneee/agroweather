@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react-native';
 import { Linking } from 'react-native';
 
 import {
@@ -91,7 +97,12 @@ describe('EvidencePicker', () => {
       )
     ).toBeOnTheScreen();
     fireEvent.press(screen.getByRole('button', { name: 'Buka Pengaturan' }));
-    expect(openSettings).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(openSettings).toHaveBeenCalledTimes(1);
+      expect(
+        screen.getByRole('button', { name: 'Buka Pengaturan' })
+      ).not.toBeDisabled();
+    });
   });
 
   test('shows a safe inline message for camera permission denial', async () => {
@@ -145,6 +156,85 @@ describe('EvidencePicker', () => {
         'Foto yang dipilih belum dapat digunakan. Coba foto lain.'
       )
     ).toBeOnTheScreen();
+  });
+
+  test('serializes gallery and camera actions through picker completion', async () => {
+    let resolvePermission!: (value: {
+      granted: boolean;
+      canAskAgain: boolean;
+    }) => void;
+    let resolvePicker!: (value: typeof galleryAsset) => void;
+    const onChange = jest.fn();
+    imagePickerMocks.requestMediaLibraryPermissionsAsync.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePermission = resolve;
+        })
+    );
+    imagePickerMocks.launchImageLibraryAsync.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePicker = resolve;
+        })
+    );
+    render(<EvidencePicker asset={null} onChange={onChange} />);
+    const galleryButton = screen.getByRole('button', {
+      name: 'Pilih Foto Bukti',
+    });
+    const cameraButton = screen.getByRole('button', { name: 'Ambil Foto' });
+
+    fireEvent.press(galleryButton);
+    fireEvent.press(galleryButton);
+    fireEvent.press(cameraButton);
+
+    expect(
+      imagePickerMocks.requestMediaLibraryPermissionsAsync
+    ).toHaveBeenCalledTimes(1);
+    expect(imagePickerMocks.requestCameraPermissionsAsync).not.toHaveBeenCalled();
+    expect(galleryButton).toBeDisabled();
+    expect(cameraButton).toBeDisabled();
+
+    await act(async () => {
+      resolvePermission({ granted: true, canAskAgain: true });
+    });
+    await waitFor(() => {
+      expect(imagePickerMocks.launchImageLibraryAsync).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByRole('button', { name: 'Pilih Foto Bukti' })).toBeDisabled();
+
+    await act(async () => {
+      resolvePicker(galleryAsset);
+    });
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(
+        screen.getByRole('button', { name: 'Pilih Foto Bukti' })
+      ).not.toBeDisabled();
+    });
+  });
+
+  test('ignores a permission completion after unmount', async () => {
+    let resolvePermission!: (value: {
+      granted: boolean;
+      canAskAgain: boolean;
+    }) => void;
+    const onChange = jest.fn();
+    imagePickerMocks.requestMediaLibraryPermissionsAsync.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePermission = resolve;
+        })
+    );
+    const view = render(<EvidencePicker asset={null} onChange={onChange} />);
+
+    fireEvent.press(screen.getByRole('button', { name: 'Pilih Foto Bukti' }));
+    view.unmount();
+    await act(async () => {
+      resolvePermission({ granted: true, canAskAgain: true });
+    });
+
+    expect(imagePickerMocks.launchImageLibraryAsync).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   test('picks from gallery, captures a replacement, and deletes the current asset', async () => {
