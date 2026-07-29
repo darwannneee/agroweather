@@ -1,21 +1,15 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { Alert } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 
+import { PlotCard } from '@/components/domain/plot-card';
+import { PlotStats } from '@/components/domain/plot-stats';
 import { AppButton } from '@/components/ui/app-button';
 import { AppScreen } from '@/components/ui/app-screen';
-import { AppText } from '@/components/ui/app-text';
 import { FeedbackState } from '@/components/ui/feedback-state';
 import { ScreenHeader } from '@/components/ui/screen-header';
-import { StatusPill } from '@/components/ui/status-pill';
-import { SurfaceCard } from '@/components/ui/surface-card';
-import { Colors, Spacing } from '@/constants/theme';
 import type { FarmPlot } from '@/lib/farm-types';
 import { fetchPlots, setPlotStatus } from '@/services/plots';
-
-function formatCoordinate(value: number): string {
-  return value.toFixed(5);
-}
 
 export default function PenataanLahanScreen() {
   const router = useRouter();
@@ -102,20 +96,7 @@ export default function PenataanLahanScreen() {
         }
       />
 
-      <View style={styles.stats}>
-        <SurfaceCard style={styles.stat}>
-          <AppText variant="title">{stats.total}</AppText>
-          <AppText variant="small" color={Colors.muted}>Total</AppText>
-        </SurfaceCard>
-        <SurfaceCard style={styles.stat}>
-          <AppText variant="title">{stats.active}</AppText>
-          <AppText variant="small" color={Colors.muted}>Aktif</AppText>
-        </SurfaceCard>
-        <SurfaceCard style={styles.stat}>
-          <AppText variant="title">{stats.assigned}</AppText>
-          <AppText variant="small" color={Colors.muted}>Petani</AppText>
-        </SurfaceCard>
-      </View>
+      <PlotStats total={stats.total} active={stats.active} assigned={stats.assigned} />
 
       {loading ? (
         <FeedbackState title="Memuat data lahan…" loading />
@@ -133,90 +114,20 @@ export default function PenataanLahanScreen() {
         />
       ) : (
         plots.map((plot) => (
-          <SurfaceCard key={plot.id}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardTitle}>
-                <AppText variant="subtitle">{plot.namaLahan}</AppText>
-                <AppText variant="small" color={Colors.muted}>
-                  {plot.jenisTanaman} · {plot.faseLahan ?? 'Fase belum dicatat'}
-                </AppText>
-              </View>
-              <StatusPill
-                label={plot.status === 'aktif' ? 'AKTIF' : 'NONAKTIF'}
-                tone={plot.status === 'aktif' ? 'success' : 'danger'}
-              />
-            </View>
-
-            <View style={styles.details}>
-              <View style={styles.detailRow}>
-                <AppText variant="small" color={Colors.muted}>Luas</AppText>
-                <AppText variant="smallStrong">{plot.luasHektar ?? '-'} ha</AppText>
-              </View>
-              <View style={styles.detailRow}>
-                <AppText variant="small" color={Colors.muted}>Petani</AppText>
-                <AppText variant="smallStrong">
-                  {plot.farmerName ?? 'Belum diassign'}
-                </AppText>
-              </View>
-              <View style={styles.detailRow}>
-                <AppText variant="small" color={Colors.muted}>Radius hadir</AppText>
-                <AppText variant="smallStrong">{plot.radiusGeofenceM} m</AppText>
-              </View>
-              <AppText variant="small" color={Colors.muted}>
-                {formatCoordinate(plot.latCenter)}, {formatCoordinate(plot.lngCenter)}
-              </AppText>
-            </View>
-
-            <View style={styles.actions}>
-              <View style={styles.action}>
-                <AppButton
-                  label="Edit"
-                  variant="secondary"
-                  onPress={() =>
-                    router.push({
-                      pathname: '/(app)/penataan-lahan/form',
-                      params: { plotId: plot.id },
-                    })
-                  }
-                />
-              </View>
-              <View style={styles.action}>
-                <AppButton
-                  label={plot.status === 'aktif' ? 'Nonaktifkan' : 'Aktifkan'}
-                  variant="secondary"
-                  loading={mutatingId === plot.id}
-                  onPress={() => handleToggleStatus(plot)}
-                />
-              </View>
-            </View>
-          </SurfaceCard>
+          <PlotCard
+            key={plot.id}
+            plot={plot}
+            statusLoading={mutatingId === plot.id}
+            onEdit={() =>
+              router.push({
+                pathname: '/(app)/penataan-lahan/form',
+                params: { plotId: plot.id },
+              })
+            }
+            onToggleStatus={() => handleToggleStatus(plot)}
+          />
         ))
       )}
     </AppScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  stats: { flexDirection: 'row', gap: Spacing.two },
-  stat: { flex: 1, alignItems: 'center' },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.three,
-  },
-  cardTitle: { flex: 1, gap: Spacing.one },
-  details: { gap: Spacing.two },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: Spacing.three,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-    borderTopColor: Colors.border,
-    borderTopWidth: 1,
-    paddingTop: Spacing.three,
-  },
-  action: { flex: 1 },
-});

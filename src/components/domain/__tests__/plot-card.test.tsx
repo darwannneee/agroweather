@@ -50,6 +50,25 @@ describe('PlotCard', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Aktifkan Sawah A' }));
     expect(onToggleStatus).toHaveBeenCalledTimes(1);
   });
+
+  test('disables and announces the status action while mutation is in progress', () => {
+    const onToggleStatus = jest.fn();
+    render(
+      <PlotCard
+        plot={plot}
+        statusLoading
+        onEdit={() => undefined}
+        onToggleStatus={onToggleStatus}
+      />
+    );
+
+    const statusAction = screen.getByRole('button', { name: 'Nonaktifkan Sawah A' });
+    expect(statusAction).toBeDisabled();
+    expect(statusAction).toBeBusy();
+
+    fireEvent.press(statusAction);
+    expect(onToggleStatus).not.toHaveBeenCalled();
+  });
 });
 
 describe('PlotStats', () => {

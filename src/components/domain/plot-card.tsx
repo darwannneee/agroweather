@@ -9,11 +9,17 @@ import type { FarmPlot } from '@/lib/farm-types';
 
 type PlotCardProps = {
   plot: FarmPlot;
+  statusLoading?: boolean;
   onEdit: () => void;
   onToggleStatus: () => void;
 };
 
-export function PlotCard({ plot, onEdit, onToggleStatus }: PlotCardProps) {
+export function PlotCard({
+  plot,
+  statusLoading = false,
+  onEdit,
+  onToggleStatus,
+}: PlotCardProps) {
   const active = plot.status === 'aktif';
   const statusAction = active ? 'Nonaktifkan' : 'Aktifkan';
 
@@ -50,6 +56,7 @@ export function PlotCard({ plot, onEdit, onToggleStatus }: PlotCardProps) {
           label={statusAction}
           accessibilityLabel={`${statusAction} ${plot.namaLahan}`}
           variant={active ? 'danger' : 'forest'}
+          loading={statusLoading}
           onPress={onToggleStatus}
         />
       </View>
