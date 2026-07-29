@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react-native';
 
 import TaskDetailScreen from '@/app/(app)/task/[id]';
 import type { FarmPlot, FarmTask } from '@/lib/farm-types';
@@ -204,6 +210,35 @@ describe('TaskDetailScreen', () => {
     });
   });
 
+  test('prevents an unlock recheck from overlapping a pending submission GPS check', async () => {
+    let resolveSubmissionLocation!: (value: CurrentLocationResult) => void;
+    locationMocks.requestCurrentLocation
+      .mockResolvedValueOnce(granted())
+      .mockImplementationOnce(
+        () =>
+          new Promise<CurrentLocationResult>((resolve) => {
+            resolveSubmissionLocation = resolve;
+          })
+      );
+    render(<TaskDetailScreen />);
+
+    await unlockTask();
+    await chooseEvidence();
+    fireEvent.press(screen.getByRole('button', { name: 'Periksa GPS & Kirim Bukti' }));
+    await waitFor(() => {
+      expect(locationMocks.requestCurrentLocation).toHaveBeenCalledTimes(2);
+    });
+
+    expect(screen.queryByRole('button', { name: 'Periksa Lagi' })).toBeNull();
+
+    await act(async () => {
+      resolveSubmissionLocation(granted());
+    });
+    await waitFor(() => {
+      expect(evidenceMocks.uploadTaskEvidence).toHaveBeenCalledTimes(1);
+    });
+  });
+
   test('keeps the photo and note and skips upload when the second reading is outside', async () => {
     locationMocks.requestCurrentLocation
       .mockResolvedValueOnce(granted())
@@ -242,6 +277,41 @@ describe('TaskDetailScreen', () => {
     expect(evidenceMocks.uploadTaskEvidence).not.toHaveBeenCalled();
   });
 
+  test.each(['missing accuracy', 'a stale timestamp'] as const)(
+    'keeps the draft and skips upload when the second reading has %s',
+    async (issue) => {
+      const invalidSubmissionReading = granted();
+      locationMocks.requestCurrentLocation
+        .mockResolvedValueOnce(granted())
+        .mockResolvedValueOnce({
+          ...invalidSubmissionReading,
+          accuracyM:
+            issue === 'missing accuracy'
+              ? null
+              : invalidSubmissionReading.accuracyM,
+          timestamp:
+            issue === 'a stale timestamp'
+              ? Date.now() - 120_000
+              : invalidSubmissionReading.timestamp,
+        });
+      render(<TaskDetailScreen />);
+
+      await unlockTask();
+      await chooseEvidence();
+      fireEvent.changeText(screen.getByLabelText('Catatan Bukti'), 'Draft tetap tersimpan');
+      fireEvent.press(screen.getByRole('button', { name: 'Periksa GPS & Kirim Bukti' }));
+
+      expect(
+        await screen.findByText(
+          'Akurasi GPS berubah. Bukti belum dikirim; pindah ke area terbuka lalu coba lagi.'
+        )
+      ).toBeOnTheScreen();
+      expect(screen.getByDisplayValue('Draft tetap tersimpan')).toBeOnTheScreen();
+      expect(screen.getByText('Ganti Foto Bukti')).toBeOnTheScreen();
+      expect(evidenceMocks.uploadTaskEvidence).not.toHaveBeenCalled();
+    }
+  );
+
   test('shows normal submit without either GPS gate for a non-location task', async () => {
     taskMocks.fetchTaskDetail.mockResolvedValue({ ...task, requiresLocation: false });
     render(<TaskDetailScreen />);
@@ -261,23 +331,31 @@ describe('TaskDetailScreen', () => {
     expect(locationMocks.requestCurrentLocation).not.toHaveBeenCalled();
   });
 
-  test('blocks stale or missing-accuracy unlock readings before the geofence check', async () => {
-    locationMocks.requestCurrentLocation.mockResolvedValueOnce({
-      ...granted(),
-      accuracyM: null,
-      timestamp: Date.now() - 120_000,
-    });
-    render(<TaskDetailScreen />);
+  test.each(['missing accuracy', 'a stale timestamp'] as const)(
+    'blocks an unlock reading with %s before the geofence check',
+    async (issue) => {
+      const invalidUnlockReading = granted();
+      locationMocks.requestCurrentLocation.mockResolvedValueOnce({
+        ...invalidUnlockReading,
+        accuracyM:
+          issue === 'missing accuracy' ? null : invalidUnlockReading.accuracyM,
+        timestamp:
+          issue === 'a stale timestamp'
+            ? Date.now() - 120_000
+            : invalidUnlockReading.timestamp,
+      });
+      render(<TaskDetailScreen />);
 
-    fireEvent.press(await screen.findByRole('button', { name: 'Periksa Lokasi Task' }));
+      fireEvent.press(await screen.findByRole('button', { name: 'Periksa Lokasi Task' }));
 
-    expect(
-      await screen.findByText(
-        'Akurasi GPS belum cukup baik. Pindah ke area terbuka lalu periksa lagi.'
-      )
-    ).toBeOnTheScreen();
-    expect(screen.queryByText('Pilih Foto Bukti')).toBeNull();
-  });
+      expect(
+        await screen.findByText(
+          'Akurasi GPS belum cukup baik. Pindah ke area terbuka lalu periksa lagi.'
+        )
+      ).toBeOnTheScreen();
+      expect(screen.queryByText('Pilih Foto Bukti')).toBeNull();
+    }
+  );
 
   test('opens app settings from a blocked location action', async () => {
     locationMocks.requestCurrentLocation.mockResolvedValueOnce({
@@ -315,10 +393,13 @@ describe('TaskDetailScreen', () => {
     view.rerender(<TaskDetailScreen />);
     expect(await screen.findByText('Periksa pompa')).toBeOnTheScreen();
 
-    resolveFirst(task);
-    await waitFor(() => {
-      expect(screen.queryByText('Bersihkan saluran')).toBeNull();
+    await act(async () => {
+      resolveFirst(task);
     });
+    await waitFor(() => {
+      expect(plotMocks.fetchPlotById).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.queryByText('Bersihkan saluran')).toBeNull();
   });
 
   test('does not show the AI placeholder card in the active workflow', async () => {

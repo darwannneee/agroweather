@@ -59,7 +59,10 @@ export default function TaskDetailScreen() {
     reset: resetLocationAction,
   } = useLocationAction();
   const loadVersion = useRef(0);
-  const actionVersion = useRef(0);
+  const unlockVersion = useRef(0);
+  const submissionVersion = useRef(0);
+  const unlockActive = useRef(false);
+  const submissionActive = useRef(false);
   const [task, setTask] = useState<FarmTask | null>(null);
   const [plot, setPlot] = useState<FarmPlot | null>(null);
   const [unlockReading, setUnlockReading] = useState<GrantedLocationResult | null>(null);
@@ -88,7 +91,10 @@ export default function TaskDetailScreen() {
 
   const loadDetail = useCallback(async () => {
     const version = ++loadVersion.current;
-    actionVersion.current += 1;
+    unlockVersion.current += 1;
+    submissionVersion.current += 1;
+    unlockActive.current = false;
+    submissionActive.current = false;
     resetLocationAction();
     setLoading(true);
     setLoadError(null);
@@ -134,56 +140,65 @@ export default function TaskDetailScreen() {
     void loadDetail();
     return () => {
       loadVersion.current += 1;
-      actionVersion.current += 1;
+      unlockVersion.current += 1;
+      submissionVersion.current += 1;
+      unlockActive.current = false;
+      submissionActive.current = false;
     };
   }, [loadDetail]);
 
   async function handleUnlock() {
     if (!task || !plot) return;
-    const version = ++actionVersion.current;
-    setUnlockLocationError(null);
-    setSubmitLocationError(null);
-    setSubmitCanOpenSettings(false);
-
     if (!task.requiresLocation) {
       setUnlocked(true);
       return;
     }
+    if (submissionActive.current || unlockActive.current) return;
 
-    const result = await runLocationAction({
-      maxAccuracyM: accuracyLimitForRadius(plot.radiusGeofenceM),
-    });
-    if (actionVersion.current !== version) return;
+    const version = ++unlockVersion.current;
+    unlockActive.current = true;
+    setUnlockLocationError(null);
+    setSubmitLocationError(null);
+    setSubmitCanOpenSettings(false);
 
-    setUnlockReading(null);
-    setGeofence(null);
-    setUnlocked(false);
-    if (result.status !== 'granted') return;
+    try {
+      const result = await runLocationAction({
+        maxAccuracyM: accuracyLimitForRadius(plot.radiusGeofenceM),
+      });
+      if (unlockVersion.current !== version) return;
 
-    const readingIssue = validateLocationReading(
-      {
-        ...result.coords,
-        accuracyM: result.accuracyM,
-        timestamp: result.timestamp,
-      },
-      plot.radiusGeofenceM
-    );
-    if (readingIssue) {
-      setUnlockLocationError(readingErrorMessage());
-      return;
+      setUnlockReading(null);
+      setGeofence(null);
+      setUnlocked(false);
+      if (result.status !== 'granted') return;
+
+      const readingIssue = validateLocationReading(
+        {
+          ...result.coords,
+          accuracyM: result.accuracyM,
+          timestamp: result.timestamp,
+        },
+        plot.radiusGeofenceM
+      );
+      if (readingIssue) {
+        setUnlockLocationError(readingErrorMessage());
+        return;
+      }
+
+      const nextGeofence = evaluateGeofence({
+        user: result.coords,
+        plot: {
+          latitude: plot.latCenter,
+          longitude: plot.lngCenter,
+          radiusMeters: plot.radiusGeofenceM,
+        },
+      });
+      setUnlockReading(result);
+      setGeofence(nextGeofence);
+      setUnlocked(nextGeofence.unlocked);
+    } finally {
+      if (unlockVersion.current === version) unlockActive.current = false;
     }
-
-    const nextGeofence = evaluateGeofence({
-      user: result.coords,
-      plot: {
-        latitude: plot.latCenter,
-        longitude: plot.lngCenter,
-        radiusMeters: plot.radiusGeofenceM,
-      },
-    });
-    setUnlockReading(result);
-    setGeofence(nextGeofence);
-    setUnlocked(nextGeofence.unlocked);
   }
 
   function showSubmitLocationError(
@@ -196,6 +211,7 @@ export default function TaskDetailScreen() {
 
   async function handleSubmit() {
     if (!task || !plot || !profile) return;
+    if (submissionActive.current || unlockActive.current) return;
 
     const validation = validateEvidenceUpload({
       unlocked,
@@ -207,7 +223,8 @@ export default function TaskDetailScreen() {
     }
     if (!asset) return;
 
-    const version = ++actionVersion.current;
+    const version = ++submissionVersion.current;
+    submissionActive.current = true;
     setSubmitting(true);
     setSubmitLocationError(null);
     setSubmitCanOpenSettings(false);
@@ -218,7 +235,7 @@ export default function TaskDetailScreen() {
         const fresh = await requestCurrentLocation({
           maxAccuracyM: accuracyLimitForRadius(plot.radiusGeofenceM),
         });
-        if (actionVersion.current !== version) return;
+        if (submissionVersion.current !== version) return;
 
         if (fresh.status !== 'granted') {
           showSubmitLocationError(
@@ -270,19 +287,22 @@ export default function TaskDetailScreen() {
         aiPlaceholderSummary: analysisSummary,
       });
       await markTaskComplete(task.id);
-      if (actionVersion.current !== version) return;
+      if (submissionVersion.current !== version) return;
 
       Alert.alert('Bukti tersimpan', 'Task selesai dan bukti pekerjaan sudah diunggah.', [
         { text: 'OK', onPress: () => router.replace('/(app)/petani') },
       ]);
     } catch (error) {
-      if (actionVersion.current !== version) return;
+      if (submissionVersion.current !== version) return;
       Alert.alert(
         'Gagal upload bukti',
         error instanceof Error ? error.message : 'Terjadi kesalahan'
       );
     } finally {
-      if (actionVersion.current === version) setSubmitting(false);
+      if (submissionVersion.current === version) {
+        submissionActive.current = false;
+        setSubmitting(false);
+      }
     }
   }
 
@@ -318,8 +338,8 @@ export default function TaskDetailScreen() {
           title="Task siap dikerjakan"
           message="Lokasi Anda sudah berada di dalam radius lahan."
           meta={`Jarak ke lahan ${formatDistance(geofence.distanceM)}`}
-          actionLabel="Periksa Lagi"
-          onAction={handleUnlock}
+          actionLabel={submitting ? undefined : 'Periksa Lagi'}
+          onAction={submitting ? undefined : handleUnlock}
         />
       );
     }
@@ -423,7 +443,9 @@ export default function TaskDetailScreen() {
                 <EvidencePicker
                   asset={asset}
                   onChange={setAsset}
-                  disabled={submitting}
+                  disabled={
+                    submitting || locationActionState.status === 'checking'
+                  }
                 />
               </SurfaceCard>
               <FormField
@@ -434,7 +456,8 @@ export default function TaskDetailScreen() {
                   onChangeText: setNote,
                   placeholder: 'Contoh: Saluran air sudah dibersihkan',
                   multiline: true,
-                  editable: !submitting,
+                  editable:
+                    !submitting && locationActionState.status !== 'checking',
                 }}
               />
               {submitLocationError ? (
@@ -461,6 +484,7 @@ export default function TaskDetailScreen() {
                     : 'Kirim Bukti'
                 }
                 loading={submitting}
+                disabled={locationActionState.status === 'checking'}
                 onPress={handleSubmit}
               />
             </>
