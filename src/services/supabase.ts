@@ -10,9 +10,13 @@ if (!supabaseUrl || !supabaseKey) {
   );
 }
 
+export function resolveAuthStorage(hasWindow: boolean): typeof AsyncStorage | undefined {
+  return hasWindow ? AsyncStorage : undefined;
+}
+
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
-    storage: AsyncStorage,
+    storage: resolveAuthStorage(typeof window !== 'undefined'),
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,

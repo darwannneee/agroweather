@@ -42,7 +42,7 @@ export function mapPlotRow(row: LahanRow): FarmPlot {
   };
 }
 
-export function toPlotInsert(values: PlotFormValues) {
+function toPlotValues(values: PlotFormValues) {
   return {
     nama_lahan: values.namaLahan.trim(),
     farmer_id: values.farmerId,
@@ -52,6 +52,12 @@ export function toPlotInsert(values: PlotFormValues) {
     lat_center: values.latCenter,
     lng_center: values.lngCenter,
     radius_geofence_m: values.radiusGeofenceM,
+  };
+}
+
+export function toPlotInsert(values: PlotFormValues) {
+  return {
+    ...toPlotValues(values),
     status: 'aktif',
   };
 }
@@ -103,7 +109,7 @@ export async function updatePlot(
 ): Promise<void> {
   const { error } = await client
     .from('lahan')
-    .update({ ...toPlotInsert(values), updated_at: new Date().toISOString() })
+    .update({ ...toPlotValues(values), updated_at: new Date().toISOString() })
     .eq('id', plotId);
   if (error) throw error;
 }

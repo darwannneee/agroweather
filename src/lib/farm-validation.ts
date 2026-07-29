@@ -1,5 +1,15 @@
 import type { PlotFormErrors, PlotFormValues } from './farm-types';
 
+export function normalizePlotIdParam(value: string | string[] | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+export function plotFormIsDirty(current: PlotFormValues, initial: PlotFormValues): boolean {
+  return JSON.stringify(current) !== JSON.stringify(initial);
+}
+
 export function validatePlotForm(values: PlotFormValues): PlotFormErrors {
   const area = Number(values.luasHektar);
 

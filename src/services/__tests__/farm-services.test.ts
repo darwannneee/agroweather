@@ -1,5 +1,9 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+import type { PlotFormValues } from '@/lib/farm-types';
+
 import { buildEvidencePath } from '../evidence';
-import { mapPlotRow, toPlotInsert } from '../plots';
+import { mapPlotRow, toPlotInsert, updatePlot } from '../plots';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   clear: jest.fn(),
@@ -10,6 +14,17 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 jest.mock('../supabase', () => ({ supabase: {} }));
 
 describe('plot service mapping', () => {
+  const validForm: PlotFormValues = {
+    namaLahan: 'Sawah Utara',
+    farmerId: 'farmer-1',
+    luasHektar: '2.5',
+    jenisTanaman: 'Padi',
+    faseLahan: 'Penyiraman',
+    latCenter: -7.25,
+    lngCenter: 112.76,
+    radiusGeofenceM: 1000,
+  };
+
   test('maps Supabase lahan row into app plot shape', () => {
     expect(
       mapPlotRow({
@@ -40,18 +55,7 @@ describe('plot service mapping', () => {
   });
 
   test('converts validated form values into lahan insert payload', () => {
-    expect(
-      toPlotInsert({
-        namaLahan: 'Sawah Utara',
-        farmerId: 'farmer-1',
-        luasHektar: '2.5',
-        jenisTanaman: 'Padi',
-        faseLahan: 'Penyiraman',
-        latCenter: -7.25,
-        lngCenter: 112.76,
-        radiusGeofenceM: 1000,
-      })
-    ).toEqual({
+    expect(toPlotInsert(validForm)).toEqual({
       nama_lahan: 'Sawah Utara',
       farmer_id: 'farmer-1',
       luas_hektar: 2.5,
@@ -62,6 +66,20 @@ describe('plot service mapping', () => {
       radius_geofence_m: 1000,
       status: 'aktif',
     });
+  });
+
+  test('does not reactivate a plot while updating its form fields', async () => {
+    const eq = jest.fn(async () => ({ error: null }));
+    const update = jest.fn((_payload: Record<string, unknown>) => ({ eq }));
+    const from = jest.fn(() => ({ update }));
+    const client = { from } as unknown as SupabaseClient;
+
+    await updatePlot('plot-1', validForm, client);
+
+    expect(from).toHaveBeenCalledWith('lahan');
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls[0][0]).not.toHaveProperty('status');
+    expect(eq).toHaveBeenCalledWith('id', 'plot-1');
   });
 });
 

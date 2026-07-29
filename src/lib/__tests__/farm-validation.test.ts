@@ -1,4 +1,9 @@
-import { validateEvidenceUpload, validatePlotForm } from '../farm-validation';
+import {
+  normalizePlotIdParam,
+  plotFormIsDirty,
+  validateEvidenceUpload,
+  validatePlotForm,
+} from '../farm-validation';
 
 describe('validatePlotForm', () => {
   const valid = {
@@ -72,6 +77,18 @@ describe('validatePlotForm', () => {
     expect(validatePlotForm({ ...valid, lngCenter: 180.01 }).lngCenter).toBe(
       'Longitude harus berada di antara -180 dan 180'
     );
+  });
+
+  test('detects dirty plot forms', () => {
+    expect(plotFormIsDirty(valid, valid)).toBe(false);
+    expect(plotFormIsDirty({ ...valid, namaLahan: 'Nama Baru' }, valid)).toBe(true);
+  });
+
+  test('accepts only a non-blank scalar plot id', () => {
+    expect(normalizePlotIdParam(' plot-1 ')).toBe('plot-1');
+    expect(normalizePlotIdParam('  ')).toBeNull();
+    expect(normalizePlotIdParam(['plot-1'])).toBeNull();
+    expect(normalizePlotIdParam(undefined)).toBeNull();
   });
 });
 
