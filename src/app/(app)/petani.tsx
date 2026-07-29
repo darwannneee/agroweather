@@ -13,7 +13,7 @@ import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Spacing } from '@/constants/theme';
 import { useLocationAction } from '@/hooks/use-location-action';
 import type { FarmPlot, FarmTask } from '@/lib/farm-types';
-import { evaluateGeofence, type Coordinates } from '@/lib/geofence';
+import { evaluateGeofence } from '@/lib/geofence';
 import {
   findNearestActivePlot,
   LOCATION_MAX_ACCURACY_M,
@@ -25,7 +25,10 @@ import {
   type CheckInResult,
 } from '@/services/attendance';
 import { useAuth } from '@/services/auth-context';
-import { openLocationSettings } from '@/services/location';
+import {
+  type GrantedLocationResult,
+  openLocationSettings,
+} from '@/services/location';
 import { fetchAssignedPlots } from '@/services/plots';
 import { fetchFarmerTasks } from '@/services/tasks';
 
@@ -66,14 +69,24 @@ function readingIssueMessage(
 function taskState(
   task: FarmTask,
   plot: FarmPlot | null,
-  location: Coordinates | null
+  reading: GrantedLocationResult | null
 ): TaskCardState {
   if (task.status === 'selesai') return 'completed';
   if (!task.requiresLocation) return 'ready';
-  if (!plot || !location) return 'check-location';
+  if (!plot || !reading) return 'check-location';
+
+  const issue = validateLocationReading(
+    {
+      ...reading.coords,
+      accuracyM: reading.accuracyM,
+      timestamp: reading.timestamp,
+    },
+    plot.radiusGeofenceM
+  );
+  if (issue) return 'check-location';
 
   const result = evaluateGeofence({
-    user: location,
+    user: reading.coords,
     plot: {
       latitude: plot.latCenter,
       longitude: plot.lngCenter,
@@ -86,18 +99,27 @@ function taskState(
 export default function PetaniDashboard() {
   const { profile, signOut } = useAuth();
   const router = useRouter();
-  const { state: locationState, run: runLocationAction } =
-    useLocationAction();
+  const {
+    state: locationState,
+    run: runLocationAction,
+    reset: resetLocationAction,
+  } = useLocationAction();
   const farmerId = profile?.id;
   const [plots, setPlots] = useState<FarmPlot[]>([]);
   const [tasks, setTasks] = useState<FarmTask[]>([]);
-  const [validatedLocation, setValidatedLocation] =
-    useState<Coordinates | null>(null);
+  const [validatedReading, setValidatedReading] =
+    useState<GrantedLocationResult | null>(null);
   const [attendanceOutcome, setAttendanceOutcome] =
     useState<AttendanceOutcome | null>(null);
+  const [attendanceBusy, setAttendanceBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const requestVersion = useRef(0);
+  const attendanceRequestVersion = useRef(0);
+  const attendanceInFlight = useRef(false);
+  const mounted = useRef(true);
+  const farmerIdRef = useRef(farmerId);
+  farmerIdRef.current = farmerId;
 
   const loadDashboard = useCallback(async () => {
     const version = ++requestVersion.current;
@@ -142,6 +164,24 @@ export default function PetaniDashboard() {
     };
   }, [loadDashboard]);
 
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      attendanceRequestVersion.current += 1;
+      attendanceInFlight.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    attendanceRequestVersion.current += 1;
+    attendanceInFlight.current = false;
+    setAttendanceBusy(false);
+    setAttendanceOutcome(null);
+    setValidatedReading(null);
+    resetLocationAction();
+  }, [farmerId, resetLocationAction]);
+
   const activePlotCount = useMemo(
     () => plots.filter((plot) => plot.status === 'aktif').length,
     [plots]
@@ -154,10 +194,10 @@ export default function PetaniDashboard() {
       return {
         task: currentTask,
         plot,
-        state: taskState(currentTask, plot, validatedLocation),
+        state: taskState(currentTask, plot, validatedReading),
       };
     });
-  }, [plots, tasks, validatedLocation]);
+  }, [plots, tasks, validatedReading]);
 
   const readyTasks = taskViewModels.filter((item) => item.state === 'ready');
   const locationTasks = taskViewModels.filter(
@@ -168,47 +208,69 @@ export default function PetaniDashboard() {
   );
 
   const checkAttendance = useCallback(async () => {
-    if (!farmerId) return;
+    if (!farmerId || attendanceInFlight.current) return;
 
+    attendanceInFlight.current = true;
+    const version = ++attendanceRequestVersion.current;
+    const requestFarmerId = farmerId;
+    const isCurrentRequest = () =>
+      mounted.current &&
+      attendanceRequestVersion.current === version &&
+      farmerIdRef.current === requestFarmerId;
+
+    setAttendanceBusy(true);
     setAttendanceOutcome(null);
-    const location = await runLocationAction({
-      maxAccuracyM: LOCATION_MAX_ACCURACY_M,
-    });
-    if (location.status !== 'granted') return;
+    setValidatedReading(null);
 
-    const nearest = findNearestActivePlot(plots, location.coords);
-    if (!nearest) {
-      setAttendanceOutcome({ kind: 'no-active-plot' });
-      return;
-    }
-
-    const issue = validateLocationReading(
-      {
-        ...location.coords,
-        accuracyM: location.accuracyM,
-        timestamp: location.timestamp,
-      },
-      nearest.plot.radiusGeofenceM
-    );
-    if (issue) {
-      setAttendanceOutcome({
-        kind: 'reading-error',
-        issue,
-        plot: nearest.plot,
-      });
-      return;
-    }
-
-    setValidatedLocation(location.coords);
     try {
-      const result = await checkInIfInsideRadius({
-        farmerId,
-        plot: nearest.plot,
-        userLocation: location.coords,
+      const location = await runLocationAction({
+        maxAccuracyM: LOCATION_MAX_ACCURACY_M,
       });
-      setAttendanceOutcome({ kind: 'checked', plot: nearest.plot, result });
-    } catch {
-      setAttendanceOutcome({ kind: 'network-error', plot: nearest.plot });
+      if (!isCurrentRequest() || location.status !== 'granted') return;
+
+      const nearest = findNearestActivePlot(plots, location.coords);
+      if (!nearest) {
+        setAttendanceOutcome({ kind: 'no-active-plot' });
+        return;
+      }
+
+      const issue = validateLocationReading(
+        {
+          ...location.coords,
+          accuracyM: location.accuracyM,
+          timestamp: location.timestamp,
+        },
+        nearest.plot.radiusGeofenceM
+      );
+      if (issue) {
+        setAttendanceOutcome({
+          kind: 'reading-error',
+          issue,
+          plot: nearest.plot,
+        });
+        return;
+      }
+
+      setValidatedReading(location);
+      try {
+        const result = await checkInIfInsideRadius({
+          farmerId: requestFarmerId,
+          plot: nearest.plot,
+          userLocation: location.coords,
+        });
+        if (isCurrentRequest()) {
+          setAttendanceOutcome({ kind: 'checked', plot: nearest.plot, result });
+        }
+      } catch {
+        if (isCurrentRequest()) {
+          setAttendanceOutcome({ kind: 'network-error', plot: nearest.plot });
+        }
+      }
+    } finally {
+      if (isCurrentRequest()) {
+        attendanceInFlight.current = false;
+        setAttendanceBusy(false);
+      }
     }
   }, [farmerId, plots, runLocationAction]);
 
@@ -233,12 +295,17 @@ export default function PetaniDashboard() {
   }
 
   function renderAttendanceCard() {
-    if (locationState.status === 'checking') {
+    if (attendanceBusy || locationState.status === 'checking') {
+      const persisting = locationState.status !== 'checking';
       return (
         <LocationActionCard
           state="checking"
-          title="Mencari sinyal GPS…"
-          message="Tetap di area lahan sampai pembacaan lokasi selesai."
+          title={persisting ? 'Menyimpan kehadiran…' : 'Mencari sinyal GPS…'}
+          message={
+            persisting
+              ? 'Tunggu sampai absensi selesai disimpan.'
+              : 'Tetap di area lahan sampai pembacaan lokasi selesai.'
+          }
         />
       );
     }

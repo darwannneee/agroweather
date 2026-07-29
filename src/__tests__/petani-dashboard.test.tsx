@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -18,17 +19,35 @@ jest.mock('expo-router', () => {
   };
 });
 
-jest.mock('@/services/auth-context', () => ({
-  useAuth: () => ({
-    profile: {
-      id: 'farmer-1',
-      nama: 'Budi',
-      email: 'budi@example.com',
-      role: 'farmer',
+jest.mock('@/services/auth-context', () => {
+  type MockProfile = {
+    id: string;
+    nama: string;
+    email: string;
+    role: 'farmer';
+  };
+  const initialProfile: MockProfile = {
+    id: 'farmer-1',
+    nama: 'Budi',
+    email: 'budi@example.com',
+    role: 'farmer',
+  };
+  let profile = initialProfile;
+  const signOut = jest.fn();
+
+  return {
+    useAuth: () => ({
+      profile,
+      signOut,
+    }),
+    __setProfile: (next: MockProfile) => {
+      profile = next;
     },
-    signOut: jest.fn(),
-  }),
-}));
+    __resetProfile: () => {
+      profile = initialProfile;
+    },
+  };
+});
 
 jest.mock('@/services/plots', () => ({
   fetchAssignedPlots: jest.fn(),
@@ -47,6 +66,15 @@ jest.mock('@/services/location', () => ({
   openLocationSettings: jest.fn(),
 }));
 
+const authMocks = jest.requireMock('@/services/auth-context') as {
+  __setProfile: (profile: {
+    id: string;
+    nama: string;
+    email: string;
+    role: 'farmer';
+  }) => void;
+  __resetProfile: () => void;
+};
 const plotMocks = jest.requireMock('@/services/plots') as {
   fetchAssignedPlots: jest.Mock;
 };
@@ -125,6 +153,16 @@ function granted(
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 async function renderReady() {
   render(<PetaniDashboard />);
   return screen.findByRole('button', {
@@ -135,6 +173,7 @@ async function renderReady() {
 describe('PetaniDashboard', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    authMocks.__resetProfile();
     plotMocks.fetchAssignedPlots.mockResolvedValue([nearPlot]);
     taskMocks.fetchFarmerTasks.mockResolvedValue([]);
     locationMocks.requestCurrentLocation.mockResolvedValue(granted());
@@ -159,6 +198,181 @@ describe('PetaniDashboard', () => {
     await waitFor(() => {
       expect(locationMocks.requestCurrentLocation).toHaveBeenCalledTimes(1);
     });
+  });
+
+  test('serializes GPS and persistence as one busy attendance action', async () => {
+    const persistence = deferred<{
+      unlocked: boolean;
+      distanceM: number;
+      attendanceCreated: boolean;
+    }>();
+    attendanceMocks.checkInIfInsideRadius.mockReturnValue(persistence.promise);
+    const action = await renderReady();
+
+    fireEvent.press(action);
+    fireEvent.press(action);
+
+    await waitFor(() => {
+      expect(attendanceMocks.checkInIfInsideRadius).toHaveBeenCalledTimes(1);
+    });
+    expect(locationMocks.requestCurrentLocation).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', {
+      name: 'Aktifkan GPS & Cek Kehadiran',
+    })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Periksa Lagi' })).toBeNull();
+
+    await act(async () => {
+      persistence.resolve({
+        unlocked: true,
+        distanceM: 0,
+        attendanceCreated: true,
+      });
+      await persistence.promise;
+    });
+
+    expect(await screen.findByText('Kehadiran tercatat')).toBeOnTheScreen();
+  });
+
+  test.each([
+    [
+      'denied',
+      {
+        status: 'permission-denied',
+        coords: null,
+        accuracyM: null,
+        timestamp: null,
+        message: 'Izin lokasi diperlukan untuk melanjutkan aksi ini.',
+        canOpenSettings: false,
+      } satisfies CurrentLocationResult,
+    ],
+    [
+      'invalid',
+      granted({ coords: { latitude: 91, longitude: 112.76 } }),
+    ],
+  ])(
+    'clears a prior task unlock before a %s retry',
+    async (_label, secondReading) => {
+      taskMocks.fetchFarmerTasks.mockResolvedValue([
+        task('task-near', 'Periksa irigasi'),
+      ]);
+      locationMocks.requestCurrentLocation
+        .mockResolvedValueOnce(granted())
+        .mockResolvedValueOnce(secondReading);
+      const action = await renderReady();
+
+      fireEvent.press(action);
+      const retry = await screen.findByRole('button', {
+        name: 'Periksa Lagi',
+      });
+      const readyTask = screen.getByRole('button', {
+        name: 'Buka tugas Periksa irigasi',
+      });
+      expect(within(readyTask).getByText('Siap')).toBeOnTheScreen();
+
+      fireEvent.press(retry);
+
+      await waitFor(() => {
+        const resetTask = screen.getByRole('button', {
+          name: 'Buka tugas Periksa irigasi',
+        });
+        expect(
+          within(resetTask).getByText('Perlu cek lokasi')
+        ).toBeOnTheScreen();
+      });
+      expect(attendanceMocks.checkInIfInsideRadius).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test('validates the granted reading against each task plot radius', async () => {
+    const largeAttendancePlot: FarmPlot = {
+      ...nearPlot,
+      id: 'plot-large',
+      namaLahan: 'Kebun Besar',
+      radiusGeofenceM: 1000,
+    };
+    const smallTaskPlot: FarmPlot = {
+      ...nearPlot,
+      id: 'plot-small',
+      namaLahan: 'Petak Kecil',
+      latCenter: -7.2501,
+      radiusGeofenceM: 100,
+    };
+    plotMocks.fetchAssignedPlots.mockResolvedValue([
+      largeAttendancePlot,
+      smallTaskPlot,
+    ]);
+    taskMocks.fetchFarmerTasks.mockResolvedValue([
+      task('task-small', 'Rawat petak kecil', {
+        lahanId: smallTaskPlot.id,
+      }),
+    ]);
+    locationMocks.requestCurrentLocation.mockResolvedValue(
+      granted({ accuracyM: 150 })
+    );
+    const action = await renderReady();
+
+    fireEvent.press(action);
+    expect(await screen.findByText('Kehadiran tercatat')).toBeOnTheScreen();
+
+    const smallTask = screen.getByRole('button', {
+      name: 'Buka tugas Rawat petak kecil',
+    });
+    expect(within(smallTask).getByText('Perlu cek lokasi')).toBeOnTheScreen();
+    expect(within(smallTask).queryByText('Siap')).toBeNull();
+  });
+
+  test('ignores an old attendance completion after the farmer changes', async () => {
+    const persistence = deferred<{
+      unlocked: boolean;
+      distanceM: number;
+      attendanceCreated: boolean;
+    }>();
+    attendanceMocks.checkInIfInsideRadius.mockReturnValue(persistence.promise);
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const rendered = render(<PetaniDashboard />);
+
+    try {
+      fireEvent.press(
+        await screen.findByRole('button', {
+          name: 'Aktifkan GPS & Cek Kehadiran',
+        })
+      );
+      await waitFor(() => {
+        expect(attendanceMocks.checkInIfInsideRadius).toHaveBeenCalledTimes(1);
+      });
+
+      await act(async () => {
+        authMocks.__setProfile({
+          id: 'farmer-2',
+          nama: 'Sari',
+          email: 'sari@example.com',
+          role: 'farmer',
+        });
+        rendered.rerender(<PetaniDashboard />);
+      });
+      await waitFor(() => {
+        expect(plotMocks.fetchAssignedPlots).toHaveBeenCalledWith('farmer-2');
+      });
+
+      await act(async () => {
+        persistence.resolve({
+          unlocked: true,
+          distanceM: 0,
+          attendanceCreated: true,
+        });
+        await persistence.promise;
+      });
+
+      expect(screen.queryByText('Kehadiran tercatat')).toBeNull();
+      expect(
+        await screen.findByRole('button', {
+          name: 'Aktifkan GPS & Cek Kehadiran',
+        })
+      ).toBeOnTheScreen();
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   test('checks attendance against only the nearest active assigned plot', async () => {
