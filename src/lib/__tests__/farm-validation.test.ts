@@ -64,6 +64,15 @@ describe('validatePlotForm', () => {
       lngCenter: 'Longitude lahan wajib dipilih',
     });
   });
+
+  test('rejects coordinates outside geographic bounds', () => {
+    expect(validatePlotForm({ ...valid, latCenter: 90.01 }).latCenter).toBe(
+      'Latitude harus berada di antara -90 dan 90'
+    );
+    expect(validatePlotForm({ ...valid, lngCenter: 180.01 }).lngCenter).toBe(
+      'Longitude harus berada di antara -180 dan 180'
+    );
+  });
 });
 
 describe('validateEvidenceUpload', () => {

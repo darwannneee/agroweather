@@ -12,13 +12,17 @@ export function validatePlotForm(values: PlotFormValues): PlotFormErrors {
     jenisTanaman: values.jenisTanaman.trim() ? null : 'Jenis tanaman wajib diisi',
     faseLahan: values.faseLahan.trim() ? null : 'Fase lahan wajib diisi',
     latCenter:
-      typeof values.latCenter === 'number' && Number.isFinite(values.latCenter)
-        ? null
-        : 'Latitude lahan wajib dipilih',
+      typeof values.latCenter !== 'number' || !Number.isFinite(values.latCenter)
+        ? 'Latitude lahan wajib dipilih'
+        : values.latCenter < -90 || values.latCenter > 90
+          ? 'Latitude harus berada di antara -90 dan 90'
+          : null,
     lngCenter:
-      typeof values.lngCenter === 'number' && Number.isFinite(values.lngCenter)
-        ? null
-        : 'Longitude lahan wajib dipilih',
+      typeof values.lngCenter !== 'number' || !Number.isFinite(values.lngCenter)
+        ? 'Longitude lahan wajib dipilih'
+        : values.lngCenter < -180 || values.lngCenter > 180
+          ? 'Longitude harus berada di antara -180 dan 180'
+          : null,
     radiusGeofenceM:
       Number.isInteger(values.radiusGeofenceM) && values.radiusGeofenceM > 0
         ? null
