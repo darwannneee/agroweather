@@ -1,285 +1,450 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { DashboardSection } from '@/components/dashboard-section';
-import { PrimaryButton } from '@/components/primary-button';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { LocationActionCard } from '@/components/domain/location-action-card';
+import { TaskCard, type TaskCardState } from '@/components/domain/task-card';
+import { AppButton } from '@/components/ui/app-button';
+import { AppScreen } from '@/components/ui/app-screen';
+import { AppText } from '@/components/ui/app-text';
+import { FeedbackState } from '@/components/ui/feedback-state';
+import { ScreenHeader } from '@/components/ui/screen-header';
+import { SurfaceCard } from '@/components/ui/surface-card';
+import { Colors, Spacing } from '@/constants/theme';
+import { useLocationAction } from '@/hooks/use-location-action';
 import type { FarmPlot, FarmTask } from '@/lib/farm-types';
-import { evaluateGeofence, type GeofenceResult } from '@/lib/geofence';
-import { checkInIfInsideRadius } from '@/services/attendance';
+import { evaluateGeofence, type Coordinates } from '@/lib/geofence';
+import {
+  findNearestActivePlot,
+  LOCATION_MAX_ACCURACY_M,
+  validateLocationReading,
+  type LocationReadingIssue,
+} from '@/lib/location-policy';
+import {
+  checkInIfInsideRadius,
+  type CheckInResult,
+} from '@/services/attendance';
 import { useAuth } from '@/services/auth-context';
-import { requestCurrentLocation, type CurrentLocationResult } from '@/services/location';
+import { openLocationSettings } from '@/services/location';
 import { fetchAssignedPlots } from '@/services/plots';
 import { fetchFarmerTasks } from '@/services/tasks';
 
-type PlotProximity = {
-  plot: FarmPlot;
-  result: GeofenceResult;
+type AttendanceOutcome =
+  | { kind: 'no-active-plot' }
+  | { kind: 'reading-error'; issue: LocationReadingIssue; plot: FarmPlot }
+  | { kind: 'checked'; plot: FarmPlot; result: CheckInResult }
+  | { kind: 'network-error'; plot: FarmPlot };
+
+type TaskViewModel = {
+  task: FarmTask;
+  plot: FarmPlot | null;
+  state: TaskCardState;
 };
 
 function formatDistance(distanceM: number | null): string {
-  if (distanceM === null) return '-';
-  if (distanceM < 1000) return `${distanceM} m`;
+  if (distanceM === null) return 'Jarak tidak tersedia';
+  if (distanceM < 1000) return `${distanceM} meter`;
   return `${(distanceM / 1000).toFixed(2)} km`;
 }
 
-function taskIsUnlocked(task: FarmTask, proximity: PlotProximity[]): boolean {
-  if (!task.requiresLocation) return true;
-  return proximity.some((item) => item.plot.id === task.lahanId && item.result.unlocked);
+function readingIssueMessage(
+  issue: LocationReadingIssue,
+  plot: FarmPlot
+): string {
+  switch (issue) {
+    case 'invalid-coordinates':
+      return 'Koordinat GPS tidak valid. Periksa pengaturan lokasi lalu coba lagi.';
+    case 'missing-accuracy':
+      return 'Akurasi GPS tidak tersedia. Pindah ke area terbuka lalu periksa lagi.';
+    case 'stale':
+      return 'Data GPS sudah kedaluwarsa. Periksa lagi untuk mengambil lokasi baru.';
+    case 'low-accuracy':
+      return `Akurasi GPS belum cukup untuk radius ${plot.radiusGeofenceM} meter. Pindah ke area terbuka lalu periksa lagi.`;
+  }
+}
+
+function taskState(
+  task: FarmTask,
+  plot: FarmPlot | null,
+  location: Coordinates | null
+): TaskCardState {
+  if (task.status === 'selesai') return 'completed';
+  if (!task.requiresLocation) return 'ready';
+  if (!plot || !location) return 'check-location';
+
+  const result = evaluateGeofence({
+    user: location,
+    plot: {
+      latitude: plot.latCenter,
+      longitude: plot.lngCenter,
+      radiusMeters: plot.radiusGeofenceM,
+    },
+  });
+  return result.unlocked ? 'ready' : 'outside';
 }
 
 export default function PetaniDashboard() {
   const { profile, signOut } = useAuth();
   const router = useRouter();
+  const { state: locationState, run: runLocationAction } =
+    useLocationAction();
+  const farmerId = profile?.id;
   const [plots, setPlots] = useState<FarmPlot[]>([]);
   const [tasks, setTasks] = useState<FarmTask[]>([]);
-  const [location, setLocation] = useState<CurrentLocationResult | null>(null);
-  const [proximity, setProximity] = useState<PlotProximity[]>([]);
+  const [validatedLocation, setValidatedLocation] =
+    useState<Coordinates | null>(null);
+  const [attendanceOutcome, setAttendanceOutcome] =
+    useState<AttendanceOutcome | null>(null);
   const [loading, setLoading] = useState(true);
-
-  const nearest = useMemo(() => {
-    const withDistance = proximity.filter((item) => item.result.distanceM !== null);
-    return withDistance.sort((a, b) => (a.result.distanceM ?? 0) - (b.result.distanceM ?? 0))[0] ?? null;
-  }, [proximity]);
-
-  const unlockedTasks = useMemo(
-    () => tasks.filter((task) => taskIsUnlocked(task, proximity)),
-    [proximity, tasks]
-  );
-  const lockedTasks = useMemo(
-    () => tasks.filter((task) => !taskIsUnlocked(task, proximity)),
-    [proximity, tasks]
-  );
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const requestVersion = useRef(0);
 
   const loadDashboard = useCallback(async () => {
-    if (!profile) return;
+    const version = ++requestVersion.current;
+    setLoading(true);
+    setLoadError(null);
+
+    if (!farmerId) {
+      if (requestVersion.current === version) {
+        setPlots([]);
+        setTasks([]);
+        setLoading(false);
+      }
+      return;
+    }
 
     try {
-      const [nextPlots, nextTasks, nextLocation] = await Promise.all([
-        fetchAssignedPlots(profile.id),
-        fetchFarmerTasks(profile.id),
-        requestCurrentLocation(),
+      const [nextPlots, nextTasks] = await Promise.all([
+        fetchAssignedPlots(farmerId),
+        fetchFarmerTasks(farmerId),
       ]);
-
-      const nextProximity = nextPlots.map((plot) => ({
-        plot,
-        result: evaluateGeofence({
-          user: nextLocation.coords,
-          plot: {
-            latitude: plot.latCenter,
-            longitude: plot.lngCenter,
-            radiusMeters: plot.radiusGeofenceM,
-          },
-        }),
-      }));
-
-      await Promise.all(
-        nextProximity
-          .filter((item) => item.result.unlocked)
-          .map((item) =>
-            checkInIfInsideRadius({
-              farmerId: profile.id,
-              plot: item.plot,
-              userLocation: nextLocation.coords,
-            })
-          )
-      );
-
-      setPlots(nextPlots);
-      setTasks(nextTasks);
-      setLocation(nextLocation);
-      setProximity(nextProximity);
-    } catch (e) {
-      Alert.alert('Gagal memuat dashboard', e instanceof Error ? e.message : 'Terjadi kesalahan');
+      if (requestVersion.current === version) {
+        setPlots(nextPlots);
+        setTasks(nextTasks);
+      }
+    } catch {
+      if (requestVersion.current === version) {
+        setLoadError(
+          'Data lahan dan tugas belum dapat dimuat. Periksa koneksi lalu coba lagi.'
+        );
+      }
     } finally {
-      setLoading(false);
+      if (requestVersion.current === version) {
+        setLoading(false);
+      }
     }
-  }, [profile]);
+  }, [farmerId]);
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      void loadDashboard();
-    }, 0);
-    return () => clearTimeout(timeout);
+    void loadDashboard();
+    return () => {
+      requestVersion.current += 1;
+    };
   }, [loadDashboard]);
 
-  const refreshDashboard = useCallback(async () => {
-    setLoading(true);
-    await loadDashboard();
-  }, [loadDashboard]);
+  const activePlotCount = useMemo(
+    () => plots.filter((plot) => plot.status === 'aktif').length,
+    [plots]
+  );
 
-  function handleLogout() {
-    Alert.alert('Keluar', 'Yakin mau keluar?', [
+  const taskViewModels = useMemo(() => {
+    const plotsById = new Map(plots.map((plot) => [plot.id, plot]));
+    return tasks.map((currentTask): TaskViewModel => {
+      const plot = plotsById.get(currentTask.lahanId) ?? null;
+      return {
+        task: currentTask,
+        plot,
+        state: taskState(currentTask, plot, validatedLocation),
+      };
+    });
+  }, [plots, tasks, validatedLocation]);
+
+  const readyTasks = taskViewModels.filter((item) => item.state === 'ready');
+  const locationTasks = taskViewModels.filter(
+    (item) => item.state === 'check-location' || item.state === 'outside'
+  );
+  const completedTasks = taskViewModels.filter(
+    (item) => item.state === 'completed'
+  );
+
+  const checkAttendance = useCallback(async () => {
+    if (!farmerId) return;
+
+    setAttendanceOutcome(null);
+    const location = await runLocationAction({
+      maxAccuracyM: LOCATION_MAX_ACCURACY_M,
+    });
+    if (location.status !== 'granted') return;
+
+    const nearest = findNearestActivePlot(plots, location.coords);
+    if (!nearest) {
+      setAttendanceOutcome({ kind: 'no-active-plot' });
+      return;
+    }
+
+    const issue = validateLocationReading(
+      {
+        ...location.coords,
+        accuracyM: location.accuracyM,
+        timestamp: location.timestamp,
+      },
+      nearest.plot.radiusGeofenceM
+    );
+    if (issue) {
+      setAttendanceOutcome({
+        kind: 'reading-error',
+        issue,
+        plot: nearest.plot,
+      });
+      return;
+    }
+
+    setValidatedLocation(location.coords);
+    try {
+      const result = await checkInIfInsideRadius({
+        farmerId,
+        plot: nearest.plot,
+        userLocation: location.coords,
+      });
+      setAttendanceOutcome({ kind: 'checked', plot: nearest.plot, result });
+    } catch {
+      setAttendanceOutcome({ kind: 'network-error', plot: nearest.plot });
+    }
+  }, [farmerId, plots, runLocationAction]);
+
+  function handleSignOut() {
+    Alert.alert('Keluar', 'Yakin ingin keluar dari AgroWeather?', [
       { text: 'Batal', style: 'cancel' },
-      { text: 'Keluar', style: 'destructive', onPress: () => signOut() },
+      {
+        text: 'Keluar',
+        style: 'destructive',
+        onPress: () => {
+          void signOut();
+        },
+      },
     ]);
   }
 
-  function openTask(task: FarmTask, unlocked: boolean) {
-    if (!unlocked) {
-      Alert.alert('Task terkunci', 'Datang ke radius 1 km dari lahan untuk membuka task ini.');
-      return;
+  function openTask(task: FarmTask) {
+    router.push({
+      pathname: '/(app)/task/[id]',
+      params: { id: task.id },
+    });
+  }
+
+  function renderAttendanceCard() {
+    if (locationState.status === 'checking') {
+      return (
+        <LocationActionCard
+          state="checking"
+          title="Mencari sinyal GPS…"
+          message="Tetap di area lahan sampai pembacaan lokasi selesai."
+        />
+      );
     }
-    router.push({ pathname: '/(app)/task/[id]', params: { id: task.id } });
+
+    if (attendanceOutcome?.kind === 'reading-error') {
+      return (
+        <LocationActionCard
+          state="warning"
+          title="Pembacaan GPS belum dapat dipakai"
+          message={readingIssueMessage(
+            attendanceOutcome.issue,
+            attendanceOutcome.plot
+          )}
+          meta={`Lahan terdekat: ${attendanceOutcome.plot.namaLahan}`}
+          actionLabel="Periksa Lagi"
+          onAction={() => void checkAttendance()}
+        />
+      );
+    }
+
+    if (attendanceOutcome?.kind === 'no-active-plot') {
+      return (
+        <LocationActionCard
+          state="neutral"
+          title="Belum ada lahan aktif"
+          message="Hubungi internal untuk memastikan penugasan lahan Anda."
+          actionLabel="Periksa Lagi"
+          onAction={() => void checkAttendance()}
+        />
+      );
+    }
+
+    if (attendanceOutcome?.kind === 'network-error') {
+      return (
+        <LocationActionCard
+          state="danger"
+          title="Absensi belum tersimpan"
+          message="GPS berhasil, tetapi absensi belum tersimpan. Coba lagi."
+          meta={`Lahan: ${attendanceOutcome.plot.namaLahan}`}
+          actionLabel="Periksa Lagi"
+          onAction={() => void checkAttendance()}
+        />
+      );
+    }
+
+    if (attendanceOutcome?.kind === 'checked') {
+      const { plot, result } = attendanceOutcome;
+      if (!result.unlocked) {
+        return (
+          <LocationActionCard
+            state="warning"
+            title="Di luar radius lahan"
+            message={`Anda belum berada di dalam radius ${plot.namaLahan}.`}
+            meta={`${formatDistance(result.distanceM)} dari titik lahan • Radius ${plot.radiusGeofenceM} meter`}
+            actionLabel="Periksa Lagi"
+            onAction={() => void checkAttendance()}
+          />
+        );
+      }
+
+      return (
+        <LocationActionCard
+          state="success"
+          title={
+            result.attendanceCreated
+              ? 'Kehadiran tercatat'
+              : 'Kehadiran sudah tercatat'
+          }
+          message={
+            result.attendanceCreated
+              ? `Anda berada di dalam radius ${plot.namaLahan}. Absensi berhasil disimpan.`
+              : `Anda berada di dalam radius ${plot.namaLahan}. Absensi hari ini sudah ada.`
+          }
+          meta={`${formatDistance(result.distanceM)} dari titik lahan • Radius ${plot.radiusGeofenceM} meter`}
+          actionLabel="Periksa Lagi"
+          onAction={() => void checkAttendance()}
+        />
+      );
+    }
+
+    if (locationState.status === 'error') {
+      const result = locationState.result;
+      const canOpenSettings =
+        result.status === 'permission-blocked' && result.canOpenSettings;
+      return (
+        <LocationActionCard
+          state="danger"
+          title="GPS tidak dapat digunakan"
+          message={
+            result.message ??
+            'Lokasi belum ditemukan. Pindah ke area terbuka lalu periksa lagi.'
+          }
+          actionLabel={canOpenSettings ? 'Buka Pengaturan' : 'Periksa Lagi'}
+          onAction={
+            canOpenSettings
+              ? () => {
+                  void openLocationSettings();
+                }
+              : () => void checkAttendance()
+          }
+        />
+      );
+    }
+
+    return (
+      <LocationActionCard
+        state="idle"
+        title="Cek lokasi saat Anda siap"
+        message="GPS hanya diambil setelah tombol ditekan dan tidak berjalan otomatis."
+        actionLabel="Aktifkan GPS & Cek Kehadiran"
+        onAction={() => void checkAttendance()}
+      />
+    );
+  }
+
+  function renderTaskSection(title: string, items: TaskViewModel[]) {
+    if (items.length === 0) return null;
+    return (
+      <View style={styles.taskSection}>
+        <AppText variant="subtitle">{title}</AppText>
+        {items.map(({ task: currentTask, plot, state }) => (
+          <TaskCard
+            key={currentTask.id}
+            task={currentTask}
+            plotName={plot?.namaLahan ?? 'Lahan tidak ditemukan'}
+            state={state}
+            radiusM={plot?.radiusGeofenceM}
+            onPress={() => openTask(currentTask)}
+          />
+        ))}
+      </View>
+    );
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safe} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.scroll}>
-          <View style={styles.header}>
-            <View style={styles.headerTitle}>
-              <ThemedText type="small" themeColor="textSecondary">
-                Selamat datang,
-              </ThemedText>
-              <ThemedText type="subtitle">{profile?.nama ?? 'Petani'}</ThemedText>
-            </View>
-            <Pressable onPress={handleLogout} style={styles.logoutBtn}>
-              <ThemedText type="smallBold" style={{ color: '#dc2626' }}>
-                Keluar
-              </ThemedText>
-            </Pressable>
+    <AppScreen>
+      <ScreenHeader
+        eyebrow="Field First"
+        title={`Halo, ${profile?.nama ?? 'Petani'}`}
+        description="Cek kehadiran secara sadar, lalu lanjutkan tugas sesuai kondisi lahan."
+        action={
+          <AppButton label="Keluar" variant="secondary" onPress={handleSignOut} />
+        }
+      />
+
+      {loading ? (
+        <FeedbackState title="Memuat dashboard…" loading />
+      ) : loadError ? (
+        <FeedbackState
+          title="Dashboard belum tersedia"
+          message={loadError}
+          actionLabel="Coba Lagi"
+          onAction={() => void loadDashboard()}
+        />
+      ) : (
+        <>
+          {renderAttendanceCard()}
+
+          <View style={styles.metrics}>
+            <SurfaceCard style={styles.metricCard}>
+              <AppText variant="title">{activePlotCount}</AppText>
+              <AppText variant="small" color={Colors.muted}>
+                Lahan aktif
+              </AppText>
+            </SurfaceCard>
+            <SurfaceCard style={styles.metricCard}>
+              <AppText variant="title">{tasks.length}</AppText>
+              <AppText variant="small" color={Colors.muted}>
+                Total tugas
+              </AppText>
+            </SurfaceCard>
           </View>
 
-          <DashboardSection title="Absensi GPS">
-            {loading ? (
-              <View style={styles.inlineStatus}>
-                <ActivityIndicator />
-                <ThemedText type="small" themeColor="textSecondary">
-                  Mengecek lokasi...
-                </ThemedText>
-              </View>
-            ) : location?.status !== 'granted' ? (
-              <View style={styles.sectionGap}>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {location?.message ?? 'Lokasi belum tersedia.'}
-                </ThemedText>
-                <PrimaryButton label="Coba Lagi" onPress={refreshDashboard} />
-              </View>
-            ) : nearest ? (
-              <View style={styles.sectionGap}>
-                <ThemedText type="smallBold">{nearest.plot.namaLahan}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  Jarak Anda {formatDistance(nearest.result.distanceM)} dari lahan.
-                </ThemedText>
-                <ThemedText
-                  type="smallBold"
-                  style={{ color: nearest.result.unlocked ? '#166534' : '#991b1b' }}
-                >
-                  {nearest.result.unlocked ? 'Hadir otomatis aktif' : 'Di luar radius 1 km'}
-                </ThemedText>
-              </View>
+          <View style={styles.tasks}>
+            <AppText variant="title">Tugas Saya</AppText>
+            {tasks.length === 0 ? (
+              <FeedbackState
+                title="Belum ada tugas"
+                message="Tugas baru dari internal akan tampil di sini."
+              />
             ) : (
-              <ThemedText type="small" themeColor="textSecondary">
-                Belum ada lahan yang diassign ke akun ini.
-              </ThemedText>
+              <>
+                {renderTaskSection('Siap dikerjakan', readyTasks)}
+                {renderTaskSection('Perlu cek lokasi', locationTasks)}
+                {renderTaskSection('Selesai', completedTasks)}
+              </>
             )}
-          </DashboardSection>
-
-          <DashboardSection title="Tugas Hari Ini">
-            {loading ? (
-              <View style={styles.inlineStatus}>
-                <ActivityIndicator />
-                <ThemedText type="small" themeColor="textSecondary">
-                  Memuat task...
-                </ThemedText>
-              </View>
-            ) : tasks.length === 0 ? (
-              <ThemedText type="small" themeColor="textSecondary">
-                Belum ada tugas. Tunggu internal assign.
-              </ThemedText>
-            ) : (
-              <View style={styles.taskList}>
-                {[...unlockedTasks, ...lockedTasks].map((task) => {
-                  const unlocked = taskIsUnlocked(task, proximity);
-                  const plot = plots.find((item) => item.id === task.lahanId);
-                  return (
-                    <Pressable
-                      key={task.id}
-                      onPress={() => openTask(task, unlocked)}
-                      style={[styles.taskCard, !unlocked && styles.taskCardLocked]}
-                    >
-                      <View style={styles.taskHeader}>
-                        <ThemedText type="smallBold">{task.judul}</ThemedText>
-                        <ThemedText
-                          type="small"
-                          style={{ color: unlocked ? '#166534' : '#991b1b' }}
-                        >
-                          {unlocked ? 'Terbuka' : 'Terkunci'}
-                        </ThemedText>
-                      </View>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {plot?.namaLahan ?? 'Lahan tidak ditemukan'}
-                      </ThemedText>
-                      {!unlocked ? (
-                        <ThemedText type="small" themeColor="textSecondary">
-                          Datang ke radius 1 km dari lahan untuk membuka task ini.
-                        </ThemedText>
-                      ) : null}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
-          </DashboardSection>
-
-          <DashboardSection title="Cuaca di Lahan Saya">
-            <ThemedText type="small" themeColor="textSecondary">
-              Data cuaca dan rekomendasi otomatis masuk fase berikutnya setelah MVP mapping stabil.
-            </ThemedText>
-          </DashboardSection>
-
-          <DashboardSection title="Scan Tanaman Terbaru">
-            <ThemedText type="small" themeColor="textSecondary">
-              Bukti foto task akan menjadi input analisis berikutnya.
-            </ThemedText>
-          </DashboardSection>
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
+          </View>
+        </>
+      )}
+    </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  safe: { flex: 1 },
-  scroll: { padding: Spacing.four, gap: Spacing.three },
-  header: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.two },
-  headerTitle: { flex: 1 },
-  logoutBtn: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.one,
-    borderRadius: 8,
-    backgroundColor: '#fee2e2',
-  },
-  inlineStatus: {
+  metrics: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
+    gap: Spacing.three,
   },
-  sectionGap: {
-    gap: Spacing.two,
+  metricCard: {
+    flex: 1,
   },
-  taskList: {
-    gap: Spacing.two,
+  tasks: {
+    gap: Spacing.three,
   },
-  taskCard: {
-    borderRadius: 8,
-    padding: Spacing.three,
-    gap: Spacing.one,
-    backgroundColor: '#f8fafc',
-  },
-  taskCardLocked: {
-    backgroundColor: '#f3f4f6',
-  },
-  taskHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: Spacing.two,
+  taskSection: {
+    gap: Spacing.three,
   },
 });
