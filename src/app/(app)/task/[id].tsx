@@ -1,28 +1,51 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { EvidencePicker, type EvidenceAsset } from '@/components/evidence-picker';
-import { FormField, ThemedInput } from '@/components/form-field';
-import { PrimaryButton } from '@/components/primary-button';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import {
+  EvidencePicker,
+  type EvidenceAsset,
+} from '@/components/domain/evidence-picker';
+import { LocationActionCard } from '@/components/domain/location-action-card';
+import { AppButton } from '@/components/ui/app-button';
+import { AppScreen } from '@/components/ui/app-screen';
+import { AppText } from '@/components/ui/app-text';
+import { FeedbackState } from '@/components/ui/feedback-state';
+import { FormField } from '@/components/ui/form-field';
+import { ScreenHeader } from '@/components/ui/screen-header';
+import { SurfaceCard } from '@/components/ui/surface-card';
 import { buildMvpAnalysisSummary } from '@/lib/analysis';
 import type { FarmPlot, FarmTask } from '@/lib/farm-types';
 import { validateEvidenceUpload } from '@/lib/farm-validation';
 import { evaluateGeofence, type GeofenceResult } from '@/lib/geofence';
+import {
+  accuracyLimitForRadius,
+  validateLocationReading,
+} from '@/lib/location-policy';
+import { useLocationAction } from '@/hooks/use-location-action';
 import { useAuth } from '@/services/auth-context';
 import { countTaskEvidence, uploadTaskEvidence } from '@/services/evidence';
-import { requestCurrentLocation, type CurrentLocationResult } from '@/services/location';
+import {
+  openLocationSettings,
+  requestCurrentLocation,
+  type CurrentLocationResult,
+  type GrantedLocationResult,
+} from '@/services/location';
 import { fetchPlotById } from '@/services/plots';
 import { fetchTaskDetail, markTaskComplete } from '@/services/tasks';
 
 function formatDistance(distanceM: number | null): string {
   if (distanceM === null) return '-';
-  if (distanceM < 1000) return `${distanceM} m`;
-  return `${(distanceM / 1000).toFixed(2)} km`;
+  if (distanceM < 1_000) return `${distanceM} m`;
+  return `${(distanceM / 1_000).toFixed(2)} km`;
+}
+
+function readingErrorMessage(): string {
+  return 'Akurasi GPS belum cukup baik. Pindah ke area terbuka lalu periksa lagi.';
+}
+
+function submissionReadingErrorMessage(): string {
+  return 'Akurasi GPS berubah. Bukti belum dikirim; pindah ke area terbuka lalu coba lagi.';
 }
 
 export default function TaskDetailScreen() {
@@ -30,20 +53,30 @@ export default function TaskDetailScreen() {
   const taskId = Array.isArray(id) ? id[0] : id;
   const router = useRouter();
   const { profile } = useAuth();
+  const {
+    state: locationActionState,
+    run: runLocationAction,
+    reset: resetLocationAction,
+  } = useLocationAction();
+  const loadVersion = useRef(0);
+  const actionVersion = useRef(0);
   const [task, setTask] = useState<FarmTask | null>(null);
   const [plot, setPlot] = useState<FarmPlot | null>(null);
-  const [location, setLocation] = useState<CurrentLocationResult | null>(null);
+  const [unlockReading, setUnlockReading] = useState<GrantedLocationResult | null>(null);
   const [geofence, setGeofence] = useState<GeofenceResult | null>(null);
+  const [unlocked, setUnlocked] = useState(false);
+  const [unlockLocationError, setUnlockLocationError] = useState<string | null>(null);
+  const [submitLocationError, setSubmitLocationError] = useState<string | null>(null);
+  const [submitCanOpenSettings, setSubmitCanOpenSettings] = useState(false);
   const [evidenceCount, setEvidenceCount] = useState(0);
   const [asset, setAsset] = useState<EvidenceAsset | null>(null);
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const unlocked = Boolean(task && (!task.requiresLocation || geofence?.unlocked));
-
   const analysisSummary = useMemo(() => {
-    if (!task || !plot) return '';
+    if (!task || !plot) return null;
     return buildMvpAnalysisSummary({
       plotName: plot.namaLahan,
       cropType: plot.jenisTanaman,
@@ -54,47 +87,112 @@ export default function TaskDetailScreen() {
   }, [evidenceCount, plot, task]);
 
   const loadDetail = useCallback(async () => {
-    if (!taskId) return;
+    const version = ++loadVersion.current;
+    actionVersion.current += 1;
+    resetLocationAction();
+    setLoading(true);
+    setLoadError(null);
+    setTask(null);
+    setPlot(null);
+    setUnlockReading(null);
+    setGeofence(null);
+    setUnlocked(false);
+    setUnlockLocationError(null);
+    setSubmitLocationError(null);
+    setSubmitCanOpenSettings(false);
+    setEvidenceCount(0);
+    setAsset(null);
+    setNote('');
+    setSubmitting(false);
+
+    if (!taskId) {
+      if (loadVersion.current === version) setLoading(false);
+      return;
+    }
 
     try {
       const nextTask = await fetchTaskDetail(taskId);
-      const [nextPlot, nextLocation, nextEvidenceCount] = await Promise.all([
+      const [nextPlot, nextEvidenceCount] = await Promise.all([
         fetchPlotById(nextTask.lahanId),
-        requestCurrentLocation(),
         countTaskEvidence(nextTask.id),
       ]);
-      const nextGeofence = evaluateGeofence({
-        user: nextLocation.coords,
-        plot: {
-          latitude: nextPlot.latCenter,
-          longitude: nextPlot.lngCenter,
-          radiusMeters: nextPlot.radiusGeofenceM,
-        },
-      });
+      if (loadVersion.current !== version) return;
 
       setTask(nextTask);
       setPlot(nextPlot);
-      setLocation(nextLocation);
-      setGeofence(nextGeofence);
       setEvidenceCount(nextEvidenceCount);
-    } catch (e) {
-      Alert.alert('Gagal memuat task', e instanceof Error ? e.message : 'Terjadi kesalahan');
+      setUnlocked(!nextTask.requiresLocation);
+    } catch (error) {
+      if (loadVersion.current !== version) return;
+      setLoadError(error instanceof Error ? error.message : 'Terjadi kesalahan');
     } finally {
-      setLoading(false);
+      if (loadVersion.current === version) setLoading(false);
     }
-  }, [taskId]);
+  }, [resetLocationAction, taskId]);
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      void loadDetail();
-    }, 0);
-    return () => clearTimeout(timeout);
+    void loadDetail();
+    return () => {
+      loadVersion.current += 1;
+      actionVersion.current += 1;
+    };
   }, [loadDetail]);
 
-  const refreshDetail = useCallback(async () => {
-    setLoading(true);
-    await loadDetail();
-  }, [loadDetail]);
+  async function handleUnlock() {
+    if (!task || !plot) return;
+    const version = ++actionVersion.current;
+    setUnlockLocationError(null);
+    setSubmitLocationError(null);
+    setSubmitCanOpenSettings(false);
+
+    if (!task.requiresLocation) {
+      setUnlocked(true);
+      return;
+    }
+
+    const result = await runLocationAction({
+      maxAccuracyM: accuracyLimitForRadius(plot.radiusGeofenceM),
+    });
+    if (actionVersion.current !== version) return;
+
+    setUnlockReading(null);
+    setGeofence(null);
+    setUnlocked(false);
+    if (result.status !== 'granted') return;
+
+    const readingIssue = validateLocationReading(
+      {
+        ...result.coords,
+        accuracyM: result.accuracyM,
+        timestamp: result.timestamp,
+      },
+      plot.radiusGeofenceM
+    );
+    if (readingIssue) {
+      setUnlockLocationError(readingErrorMessage());
+      return;
+    }
+
+    const nextGeofence = evaluateGeofence({
+      user: result.coords,
+      plot: {
+        latitude: plot.latCenter,
+        longitude: plot.lngCenter,
+        radiusMeters: plot.radiusGeofenceM,
+      },
+    });
+    setUnlockReading(result);
+    setGeofence(nextGeofence);
+    setUnlocked(nextGeofence.unlocked);
+  }
+
+  function showSubmitLocationError(
+    message: string,
+    result?: CurrentLocationResult
+  ) {
+    setSubmitLocationError(message);
+    setSubmitCanOpenSettings(Boolean(result?.canOpenSettings));
+  }
 
   async function handleSubmit() {
     if (!task || !plot || !profile) return;
@@ -109,8 +207,57 @@ export default function TaskDetailScreen() {
     }
     if (!asset) return;
 
+    const version = ++actionVersion.current;
     setSubmitting(true);
+    setSubmitLocationError(null);
+    setSubmitCanOpenSettings(false);
+
     try {
+      let submissionLocation: GrantedLocationResult | null = unlockReading;
+      if (task.requiresLocation) {
+        const fresh = await requestCurrentLocation({
+          maxAccuracyM: accuracyLimitForRadius(plot.radiusGeofenceM),
+        });
+        if (actionVersion.current !== version) return;
+
+        if (fresh.status !== 'granted') {
+          showSubmitLocationError(
+            fresh.status === 'low-accuracy'
+              ? submissionReadingErrorMessage()
+              : fresh.message,
+            fresh
+          );
+          return;
+        }
+
+        const readingIssue = validateLocationReading(
+          {
+            ...fresh.coords,
+            accuracyM: fresh.accuracyM,
+            timestamp: fresh.timestamp,
+          },
+          plot.radiusGeofenceM
+        );
+        if (readingIssue) {
+          showSubmitLocationError(submissionReadingErrorMessage());
+          return;
+        }
+
+        const freshGeofence = evaluateGeofence({
+          user: fresh.coords,
+          plot: {
+            latitude: plot.latCenter,
+            longitude: plot.lngCenter,
+            radiusMeters: plot.radiusGeofenceM,
+          },
+        });
+        if (!freshGeofence.unlocked) {
+          showSubmitLocationError('Lokasi berubah. Bukti belum dikirim.');
+          return;
+        }
+        submissionLocation = fresh;
+      }
+
       await uploadTaskEvidence({
         taskId: task.id,
         farmerId: profile.id,
@@ -118,151 +265,208 @@ export default function TaskDetailScreen() {
         photoUri: asset.uri,
         contentType: asset.mimeType,
         note: note.trim() || null,
-        lat: location?.coords?.latitude ?? null,
-        lng: location?.coords?.longitude ?? null,
+        lat: submissionLocation?.coords.latitude ?? null,
+        lng: submissionLocation?.coords.longitude ?? null,
         aiPlaceholderSummary: analysisSummary,
       });
       await markTaskComplete(task.id);
+      if (actionVersion.current !== version) return;
+
       Alert.alert('Bukti tersimpan', 'Task selesai dan bukti pekerjaan sudah diunggah.', [
         { text: 'OK', onPress: () => router.replace('/(app)/petani') },
       ]);
-    } catch (e) {
-      Alert.alert('Gagal upload bukti', e instanceof Error ? e.message : 'Terjadi kesalahan');
+    } catch (error) {
+      if (actionVersion.current !== version) return;
+      Alert.alert(
+        'Gagal upload bukti',
+        error instanceof Error ? error.message : 'Terjadi kesalahan'
+      );
     } finally {
-      setSubmitting(false);
+      if (actionVersion.current === version) setSubmitting(false);
     }
   }
 
+  function renderTaskLocationCard() {
+    if (!task?.requiresLocation) return null;
+
+    if (locationActionState.status === 'checking') {
+      return (
+        <LocationActionCard
+          state="checking"
+          title="Mencari sinyal GPS…"
+          message="Pastikan layanan lokasi perangkat menyala."
+        />
+      );
+    }
+
+    if (unlockLocationError) {
+      return (
+        <LocationActionCard
+          state="warning"
+          title="Akurasi GPS belum cukup baik"
+          message={unlockLocationError}
+          actionLabel="Periksa Lagi"
+          onAction={handleUnlock}
+        />
+      );
+    }
+
+    if (geofence?.unlocked) {
+      return (
+        <LocationActionCard
+          state="success"
+          title="Task siap dikerjakan"
+          message="Lokasi Anda sudah berada di dalam radius lahan."
+          meta={`Jarak ke lahan ${formatDistance(geofence.distanceM)}`}
+          actionLabel="Periksa Lagi"
+          onAction={handleUnlock}
+        />
+      );
+    }
+
+    if (geofence?.status === 'outside') {
+      return (
+        <LocationActionCard
+          state="warning"
+          title="Di luar radius task"
+          message="Datang lebih dekat ke lahan lalu periksa lokasi lagi."
+          meta={`Jarak ke lahan ${formatDistance(geofence.distanceM)}`}
+          actionLabel="Periksa Lagi"
+          onAction={handleUnlock}
+        />
+      );
+    }
+
+    if (locationActionState.status === 'error') {
+      const result = locationActionState.result;
+      const blocked = result.status === 'permission-blocked';
+      const servicesDisabled = result.status === 'services-disabled';
+      return (
+        <LocationActionCard
+          state={blocked || servicesDisabled ? 'danger' : 'warning'}
+          title={
+            blocked
+              ? 'Izin lokasi diblokir'
+              : servicesDisabled
+                ? 'GPS perangkat belum aktif'
+                : result.status === 'low-accuracy'
+                  ? 'Akurasi GPS belum cukup baik'
+                  : 'Lokasi belum dapat diperiksa'
+          }
+          message={result.message ?? 'Lokasi belum dapat diperiksa.'}
+          actionLabel={result.canOpenSettings ? 'Buka Pengaturan' : 'Periksa Lagi'}
+          onAction={
+            result.canOpenSettings
+              ? () => {
+                  void openLocationSettings();
+                }
+              : handleUnlock
+          }
+        />
+      );
+    }
+
+    return (
+      <LocationActionCard
+        state="idle"
+        title="Periksa lokasi sebelum mulai"
+        message="GPS hanya diambil saat Anda menekan tombol ini."
+        actionLabel="Periksa Lokasi Task"
+        onAction={handleUnlock}
+      />
+    );
+  }
+
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safe} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.scroll}>
-          <Pressable onPress={() => router.back()}>
-            <ThemedText type="linkPrimary">Kembali</ThemedText>
-          </Pressable>
+    <AppScreen>
+      {loading ? (
+        <FeedbackState
+          loading
+          title="Memuat detail task…"
+          message="Mengambil instruksi kerja terbaru."
+        />
+      ) : loadError ? (
+        <FeedbackState
+          title="Detail task belum tersedia"
+          message={loadError}
+          actionLabel="Coba Lagi"
+          onAction={() => {
+            void loadDetail();
+          }}
+        />
+      ) : !task || !plot ? (
+        <FeedbackState
+          title="Task tidak ditemukan"
+          message="Periksa kembali task yang Anda buka."
+        />
+      ) : (
+        <>
+          <ScreenHeader
+            eyebrow="Detail Tugas"
+            title={task.judul}
+            description={`${plot.namaLahan} · ${plot.jenisTanaman}`}
+          />
 
-          {loading ? (
-            <View style={styles.center}>
-              <ActivityIndicator />
-              <ThemedText type="small" themeColor="textSecondary">
-                Memuat detail task...
-              </ThemedText>
-            </View>
-          ) : !task || !plot ? (
-            <View style={styles.center}>
-              <ThemedText type="small" themeColor="textSecondary">
-                Task tidak ditemukan.
-              </ThemedText>
-            </View>
-          ) : (
+          {renderTaskLocationCard()}
+
+          <SurfaceCard>
+            <AppText variant="subtitle">Instruksi</AppText>
+            <AppText>
+              {task.deskripsi ?? 'Kerjakan sesuai arahan internal.'}
+            </AppText>
+          </SurfaceCard>
+
+          {unlocked ? (
             <>
-              <View style={styles.header}>
-                <ThemedText type="subtitle" style={styles.title}>
-                  {task.judul}
-                </ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {plot.namaLahan} - {plot.jenisTanaman}
-                </ThemedText>
-              </View>
-
-              <View style={styles.section}>
-                <ThemedText type="smallBold">Status Lokasi</ThemedText>
-                {location?.status !== 'granted' ? (
-                  <>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {location?.message ?? 'Lokasi belum tersedia.'}
-                    </ThemedText>
-                    <PrimaryButton label="Coba Lagi" onPress={refreshDetail} />
-                  </>
-                ) : (
-                  <>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      Jarak Anda {formatDistance(geofence?.distanceM ?? null)} dari lahan.
-                    </ThemedText>
-                    <ThemedText
-                      type="smallBold"
-                      style={{ color: unlocked ? '#166534' : '#991b1b' }}
-                    >
-                      {unlocked ? 'Task terbuka' : 'Task terkunci di luar radius 1 km'}
-                    </ThemedText>
-                  </>
-                )}
-              </View>
-
-              <View style={styles.section}>
-                <ThemedText type="smallBold">Instruksi</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {task.deskripsi ?? 'Kerjakan task sesuai arahan internal, lalu upload foto bukti.'}
-                </ThemedText>
-              </View>
-
-              <View style={styles.section}>
-                <ThemedText type="smallBold">Analisis AI MVP</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {analysisSummary}
-                </ThemedText>
-              </View>
-
-              <View style={styles.section}>
-                <ThemedText type="smallBold">Foto Bukti</ThemedText>
-                <EvidencePicker asset={asset} onChange={setAsset} disabled={!unlocked || submitting} />
-              </View>
-
-              <FormField label="Catatan Bukti" error={null}>
-                {() => (
-                  <ThemedInput
-                    value={note}
-                    onChangeText={setNote}
-                    placeholder="Contoh: Saluran air sudah dibersihkan"
-                    multiline
-                    numberOfLines={3}
-                  />
-                )}
-              </FormField>
-
-              <PrimaryButton
-                label="Upload Bukti & Selesaikan"
-                onPress={handleSubmit}
-                loading={submitting}
-                disabled={!unlocked}
+              <SurfaceCard>
+                <AppText variant="subtitle">Foto Bukti</AppText>
+                <EvidencePicker
+                  asset={asset}
+                  onChange={setAsset}
+                  disabled={submitting}
+                />
+              </SurfaceCard>
+              <FormField
+                label="Catatan Bukti"
+                inputProps={{
+                  accessibilityLabel: 'Catatan Bukti',
+                  value: note,
+                  onChangeText: setNote,
+                  placeholder: 'Contoh: Saluran air sudah dibersihkan',
+                  multiline: true,
+                  editable: !submitting,
+                }}
               />
-              {!unlocked ? (
-                <ThemedText type="small" themeColor="textSecondary">
-                  Datang ke radius 1 km dari lahan untuk mengunggah bukti.
-                </ThemedText>
+              {submitLocationError ? (
+                <LocationActionCard
+                  state={submitCanOpenSettings ? 'danger' : 'warning'}
+                  title="Bukti belum dikirim"
+                  message={submitLocationError}
+                  actionLabel={
+                    submitCanOpenSettings ? 'Buka Pengaturan' : undefined
+                  }
+                  onAction={
+                    submitCanOpenSettings
+                      ? () => {
+                          void openLocationSettings();
+                        }
+                      : undefined
+                  }
+                />
               ) : null}
+              <AppButton
+                label={
+                  task.requiresLocation
+                    ? 'Periksa GPS & Kirim Bukti'
+                    : 'Kirim Bukti'
+                }
+                loading={submitting}
+                onPress={handleSubmit}
+              />
             </>
-          )}
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
+          ) : null}
+        </>
+      )}
+    </AppScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  safe: { flex: 1 },
-  scroll: {
-    padding: Spacing.four,
-    gap: Spacing.three,
-  },
-  center: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.six,
-    gap: Spacing.two,
-  },
-  header: {
-    gap: Spacing.one,
-  },
-  title: {
-    fontSize: 24,
-    lineHeight: 32,
-  },
-  section: {
-    borderRadius: 8,
-    padding: Spacing.three,
-    gap: Spacing.two,
-    backgroundColor: '#f8fafc',
-  },
-});

@@ -3,8 +3,8 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { Spacing } from '@/constants/theme';
 
-import { PrimaryButton } from './primary-button';
-import { ThemedText } from './themed-text';
+import { PrimaryButton } from '../primary-button';
+import { ThemedText } from '../themed-text';
 
 export type EvidenceAsset = {
   uri: string;
