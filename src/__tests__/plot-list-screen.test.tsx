@@ -144,4 +144,41 @@ describe('PenataanLahanScreen', () => {
 
     expect(plotMocks.fetchPlots).toHaveBeenCalledTimes(1);
   });
+
+  test('blocks every other plot status action while one mutation is pending', async () => {
+    let resolveStatus!: () => void;
+    plotMocks.setPlotStatus.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStatus = resolve;
+        })
+    );
+    const alertSpy = jest.spyOn(Alert, 'alert');
+    render(<PlotListScreen />);
+
+    await screen.findByText('Sawah Utara');
+    fireEvent.press(screen.getByRole('button', { name: 'Nonaktifkan Sawah Utara' }));
+
+    const confirmationButtons = alertSpy.mock.calls.at(-1)?.[2];
+    const confirm = confirmationButtons?.find((button) => button.text === 'Ubah');
+    act(() => {
+      confirm?.onPress?.();
+    });
+
+    await waitFor(() => {
+      expect(plotMocks.setPlotStatus).toHaveBeenCalledTimes(1);
+    });
+
+    const otherStatusAction = screen.getByRole('button', {
+      name: 'Aktifkan Sawah Selatan',
+    });
+    expect(otherStatusAction).toBeDisabled();
+    fireEvent.press(otherStatusAction);
+    expect(plotMocks.setPlotStatus).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveStatus();
+      await Promise.resolve();
+    });
+  });
 });

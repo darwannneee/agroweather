@@ -20,6 +20,7 @@ export function PlotListScreen() {
   const [mutatingId, setMutatingId] = useState<string | null>(null);
   const requestVersion = useRef(0);
   const focusGeneration = useRef(0);
+  const mutationActive = useRef(false);
 
   const stats = useMemo(
     () => ({
@@ -55,11 +56,13 @@ export function PlotListScreen() {
   useFocusEffect(
     useCallback(() => {
       focusGeneration.current += 1;
+      mutationActive.current = false;
       setMutatingId(null);
       void loadPlots();
       return () => {
         focusGeneration.current += 1;
         requestVersion.current += 1;
+        mutationActive.current = false;
       };
     }, [loadPlots])
   );
@@ -75,7 +78,13 @@ export function PlotListScreen() {
         {
           text: 'Ubah',
           onPress: async () => {
-            if (focusGeneration.current !== generation) return;
+            if (
+              focusGeneration.current !== generation ||
+              mutationActive.current
+            ) {
+              return;
+            }
+            mutationActive.current = true;
             setMutatingId(plot.id);
             try {
               await setPlotStatus(plot.id, nextStatus);
@@ -88,6 +97,7 @@ export function PlotListScreen() {
               }
             } finally {
               if (focusGeneration.current === generation) {
+                mutationActive.current = false;
                 setMutatingId(null);
               }
             }
@@ -133,6 +143,7 @@ export function PlotListScreen() {
               key={plot.id}
               plot={plot}
               statusLoading={mutatingId === plot.id}
+              statusDisabled={mutatingId !== null && mutatingId !== plot.id}
               onEdit={() =>
                 router.push({
                   pathname: '/(app)/penataan-lahan/form',

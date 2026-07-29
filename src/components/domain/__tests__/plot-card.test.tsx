@@ -69,6 +69,25 @@ describe('PlotCard', () => {
     fireEvent.press(statusAction);
     expect(onToggleStatus).not.toHaveBeenCalled();
   });
+
+  test('disables the status action while another plot is mutating', () => {
+    const onToggleStatus = jest.fn();
+    render(
+      <PlotCard
+        plot={plot}
+        statusDisabled
+        onEdit={() => undefined}
+        onToggleStatus={onToggleStatus}
+      />
+    );
+
+    const statusAction = screen.getByRole('button', { name: 'Nonaktifkan Sawah A' });
+    expect(statusAction).toBeDisabled();
+    expect(statusAction).not.toBeBusy();
+
+    fireEvent.press(statusAction);
+    expect(onToggleStatus).not.toHaveBeenCalled();
+  });
 });
 
 describe('PlotStats', () => {

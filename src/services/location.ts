@@ -1,5 +1,5 @@
 import * as Location from 'expo-location';
-import { Linking } from 'react-native';
+import { Linking, Platform } from 'react-native';
 
 import type { Coordinates } from '@/lib/geofence';
 
@@ -128,6 +128,16 @@ export async function requestCurrentLocation(
   }
 }
 
-export async function openLocationSettings(): Promise<void> {
+export async function openLocationSettings(
+  status: CurrentLocationResult['status'] = 'permission-blocked'
+): Promise<void> {
+  if (status === 'services-disabled' && Platform.OS === 'android') {
+    try {
+      await Location.enableNetworkProviderAsync();
+      return;
+    } catch {
+      // Fall through to app settings if the native recovery dialog is unavailable.
+    }
+  }
   await Linking.openSettings();
 }

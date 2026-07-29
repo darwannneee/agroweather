@@ -93,4 +93,24 @@ describe('native MapPicker', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Pilih Titik Ini' }));
     expect(onConfirm).toHaveBeenCalledWith({ latitude: -7.26, longitude: 112.77 });
   });
+
+  test('keeps manual panning and confirmation available after a GPS error', () => {
+    const onConfirm = jest.fn();
+    render(
+      <MapPicker
+        value={null}
+        radiusM={1000}
+        locationError="GPS perangkat belum aktif."
+        onConfirm={onConfirm}
+        onRequestLocation={() => undefined}
+      />
+    );
+
+    expect(screen.getByText('GPS perangkat belum aktif.')).toBeOnTheScreen();
+    fireEvent.press(screen.getByRole('button', { name: 'Pilih Titik Ini' }));
+    expect(onConfirm).toHaveBeenCalledWith({
+      latitude: -7.250445,
+      longitude: 112.768845,
+    });
+  });
 });

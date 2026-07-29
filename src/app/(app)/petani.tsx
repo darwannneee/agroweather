@@ -389,8 +389,7 @@ export function PetaniDashboard() {
 
     if (locationState.status === 'error') {
       const result = locationState.result;
-      const canOpenSettings =
-        result.status === 'permission-blocked' && result.canOpenSettings;
+      const canOpenSettings = result.canOpenSettings;
       return (
         <LocationActionCard
           state="danger"
@@ -403,7 +402,7 @@ export function PetaniDashboard() {
           onAction={
             canOpenSettings
               ? () => {
-                  void openLocationSettings();
+                  void openLocationSettings(result.status);
                 }
               : () => void checkAttendance()
           }

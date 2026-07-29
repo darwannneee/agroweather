@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
+import { Linking, Platform } from 'react-native';
 
-import { requestCurrentLocation } from '../location';
+import { openLocationSettings, requestCurrentLocation } from '../location';
 
 jest.mock('expo-location', () => ({
   Accuracy: { High: 4 },
@@ -13,6 +14,7 @@ jest.mock('expo-location', () => ({
   getForegroundPermissionsAsync: jest.fn(),
   hasServicesEnabledAsync: jest.fn(),
   requestForegroundPermissionsAsync: jest.fn(),
+  enableNetworkProviderAsync: jest.fn(),
 }));
 
 const mockedLocation = jest.mocked(Location);
@@ -106,5 +108,40 @@ describe('requestCurrentLocation', () => {
       status: 'low-accuracy',
       accuracyM: 250,
     });
+  });
+
+  test('opens app settings when foreground permission is blocked', async () => {
+    const openSettings = jest
+      .spyOn(Linking, 'openSettings')
+      .mockResolvedValue(undefined);
+
+    await openLocationSettings('permission-blocked');
+
+    expect(openSettings).toHaveBeenCalledTimes(1);
+    expect(mockedLocation.enableNetworkProviderAsync).not.toHaveBeenCalled();
+  });
+
+  test('opens the Android location-services recovery dialog when GPS is disabled', async () => {
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'android',
+    });
+    mockedLocation.enableNetworkProviderAsync.mockResolvedValue(undefined);
+    const openSettings = jest
+      .spyOn(Linking, 'openSettings')
+      .mockResolvedValue(undefined);
+
+    try {
+      await openLocationSettings('services-disabled');
+
+      expect(mockedLocation.enableNetworkProviderAsync).toHaveBeenCalledTimes(1);
+      expect(openSettings).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(Platform, 'OS', {
+        configurable: true,
+        value: originalOS,
+      });
+    }
   });
 });

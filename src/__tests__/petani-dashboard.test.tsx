@@ -208,6 +208,55 @@ describe('PetaniDashboard', () => {
     });
   });
 
+  test.each([
+    {
+      status: 'permission-denied' as const,
+      message: 'Izin lokasi diperlukan untuk melanjutkan aksi ini.',
+      actionLabel: 'Periksa Lagi',
+      canOpenSettings: false,
+    },
+    {
+      status: 'services-disabled' as const,
+      message: 'GPS perangkat belum aktif. Nyalakan layanan lokasi lalu coba lagi.',
+      actionLabel: 'Buka Pengaturan',
+      canOpenSettings: true,
+    },
+    {
+      status: 'unavailable' as const,
+      message: 'Lokasi belum ditemukan. Coba lagi di area terbuka.',
+      actionLabel: 'Periksa Lagi',
+      canOpenSettings: false,
+    },
+  ])('renders the recovery action for a $status GPS result', async ({
+    status,
+    message,
+    actionLabel,
+    canOpenSettings,
+  }) => {
+    locationMocks.requestCurrentLocation.mockResolvedValue({
+      status,
+      coords: null,
+      accuracyM: null,
+      timestamp: null,
+      message,
+      canOpenSettings,
+    } satisfies CurrentLocationResult);
+    const action = await renderReady();
+
+    fireEvent.press(action);
+
+    expect(await screen.findByText(message)).toBeOnTheScreen();
+    fireEvent.press(screen.getByRole('button', { name: actionLabel }));
+    if (canOpenSettings) {
+      expect(locationMocks.openLocationSettings).toHaveBeenCalledWith(status);
+      expect(locationMocks.requestCurrentLocation).toHaveBeenCalledTimes(1);
+    } else {
+      await waitFor(() => {
+        expect(locationMocks.requestCurrentLocation).toHaveBeenCalledTimes(2);
+      });
+    }
+  });
+
   test('serializes GPS and persistence as one busy attendance action', async () => {
     const persistence = deferred<{
       unlocked: boolean;
@@ -519,7 +568,9 @@ describe('PetaniDashboard', () => {
       await screen.findByRole('button', { name: 'Buka Pengaturan' })
     );
 
-    expect(locationMocks.openLocationSettings).toHaveBeenCalledTimes(1);
+    expect(locationMocks.openLocationSettings).toHaveBeenCalledWith(
+      'permission-blocked'
+    );
   });
 
   test('renders Field First metrics and groups task cards by GPS-aware state', async () => {

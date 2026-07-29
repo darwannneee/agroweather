@@ -10,6 +10,7 @@ import type { FarmPlot } from '@/lib/farm-types';
 type PlotCardProps = {
   plot: FarmPlot;
   statusLoading?: boolean;
+  statusDisabled?: boolean;
   onEdit: () => void;
   onToggleStatus: () => void;
 };
@@ -17,6 +18,7 @@ type PlotCardProps = {
 export function PlotCard({
   plot,
   statusLoading = false,
+  statusDisabled = false,
   onEdit,
   onToggleStatus,
 }: PlotCardProps) {
@@ -57,6 +59,7 @@ export function PlotCard({
           accessibilityLabel={`${statusAction} ${plot.namaLahan}`}
           variant={active ? 'danger' : 'forest'}
           loading={statusLoading}
+          disabled={statusDisabled}
           onPress={onToggleStatus}
         />
       </View>
