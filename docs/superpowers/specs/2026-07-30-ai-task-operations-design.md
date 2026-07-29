@@ -1,7 +1,7 @@
 # AgroWeather AI Task & Daily Operations Design
 
 **Date:** 2026-07-30  
-**Status:** Approved in conversation; pending written-spec review  
+**Status:** Approved  
 **Target:** Existing Expo SDK 54 application and Supabase project
 
 ## 1. Goal
