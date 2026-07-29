@@ -61,8 +61,22 @@ describe('LoginScreen', () => {
 
     fireEvent.press(screen.getByRole('button', { name: 'Masuk' }));
 
-    expect(screen.getByText('Email wajib diisi')).toBeOnTheScreen();
-    expect(screen.getByText('Password wajib diisi')).toBeOnTheScreen();
+    expect(screen.getByText('Email wajib diisi')).toHaveProp(
+      'accessibilityLiveRegion',
+      'polite'
+    );
+    expect(screen.getByText('Password wajib diisi')).toHaveProp(
+      'accessibilityLiveRegion',
+      'polite'
+    );
+    expect(screen.getByLabelText('Email')).toHaveProp(
+      'accessibilityHint',
+      'Email wajib diisi'
+    );
+    expect(screen.getByLabelText('Password')).toHaveProp(
+      'accessibilityHint',
+      'Password wajib diisi'
+    );
     expect(authMocks.__signIn).not.toHaveBeenCalled();
   });
 
@@ -102,14 +116,24 @@ describe('LoginScreen', () => {
     render(<LoginScreen />);
 
     expect(screen.getByLabelText('Password')).toHaveProp('secureTextEntry', true);
+    expect(
+      screen.getByRole('togglebutton', { name: 'Tampilkan password' })
+    ).toHaveProp('accessibilityState', {
+      checked: false,
+      disabled: false,
+    });
     fireEvent.press(
-      screen.getByRole('button', { name: 'Tampilkan password' })
+      screen.getByRole('togglebutton', { name: 'Tampilkan password' })
     );
 
     expect(screen.getByLabelText('Password')).toHaveProp('secureTextEntry', false);
     expect(
-      screen.getByRole('button', { name: 'Sembunyikan password' })
-    ).toBeOnTheScreen();
+      screen.getByRole('togglebutton', { name: 'Tampilkan password' })
+    ).toHaveProp('accessibilityState', {
+      checked: true,
+      disabled: false,
+    });
+    expect(screen.getByText('Sembunyikan')).toBeOnTheScreen();
   });
 
   test('accepts a short non-empty legacy password and disables submit while loading', async () => {
@@ -130,6 +154,12 @@ describe('LoginScreen', () => {
       'accessibilityState',
       { busy: true, disabled: true }
     );
+    expect(
+      screen.getByRole('togglebutton', { name: 'Tampilkan password' })
+    ).toHaveProp('accessibilityState', {
+      checked: false,
+      disabled: true,
+    });
 
     await act(async () => {
       submission.resolve();

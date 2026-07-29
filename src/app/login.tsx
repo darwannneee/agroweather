@@ -111,10 +111,12 @@ export default function LoginScreen() {
             }}
           />
           <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={
-              passwordVisible ? 'Sembunyikan password' : 'Tampilkan password'
-            }
+            accessibilityRole="togglebutton"
+            accessibilityLabel="Tampilkan password"
+            accessibilityState={{
+              checked: passwordVisible,
+              disabled: submitting,
+            }}
             disabled={submitting}
             hitSlop={8}
             onPress={() => setPasswordVisible((visible) => !visible)}

@@ -26,9 +26,17 @@ export function FormField({
         placeholderTextColor={Colors.muted}
         style={[styles.input, error && styles.inputError, inputProps.multiline && styles.multiline]}
         {...inputProps}
+        accessibilityHint={error ?? inputProps.accessibilityHint}
       />
       {error ? (
-        <AppText variant="small" color={Colors.dangerText}>{error}</AppText>
+        <AppText
+          variant="small"
+          color={Colors.dangerText}
+          accessibilityLiveRegion="polite"
+          aria-live="polite"
+        >
+          {error}
+        </AppText>
       ) : help ? (
         <AppText variant="small" color={Colors.muted}>{help}</AppText>
       ) : null}
