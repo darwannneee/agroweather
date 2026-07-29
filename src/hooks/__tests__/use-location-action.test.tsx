@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react-native';
+import { StrictMode, type PropsWithChildren } from 'react';
 
 import { useLocationAction } from '../use-location-action';
 import type { CurrentLocationResult } from '@/services/location';
@@ -11,6 +12,10 @@ const granted: CurrentLocationResult = {
   message: null,
   canOpenSettings: false,
 };
+
+function StrictModeWrapper({ children }: PropsWithChildren) {
+  return <StrictMode>{children}</StrictMode>;
+}
 
 describe('useLocationAction', () => {
   test('does not request location on mount', () => {
@@ -70,5 +75,20 @@ describe('useLocationAction', () => {
       await pending;
     });
     expect(result.current.state.status).toBe('idle');
+  });
+
+  test('updates state after Strict Mode replays effects', async () => {
+    const request = jest.fn().mockResolvedValue(granted);
+    const { result } = renderHook(() => useLocationAction(request), {
+      wrapper: StrictModeWrapper,
+      // @ts-expect-error react-test-renderer's strict-root option is not exposed by renderHook.
+      unstable_strictMode: true,
+    });
+
+    await act(async () => {
+      await result.current.run();
+    });
+
+    expect(result.current.state.status).toBe('success');
   });
 });

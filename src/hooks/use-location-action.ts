@@ -19,12 +19,12 @@ export function useLocationAction(request: RequestLocation = requestCurrentLocat
   const activeRequest = useRef<Promise<CurrentLocationResult> | null>(null);
   const [state, setState] = useState<LocationActionState>({ status: 'idle', result: null });
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
       mounted.current = false;
-    },
-    []
-  );
+    };
+  }, []);
 
   const run = useCallback(
     async (options?: Parameters<RequestLocation>[0]) => {

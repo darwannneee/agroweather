@@ -7,12 +7,42 @@ import { AppText } from '@/components/ui/app-text';
 type CardState = 'idle' | 'checking' | 'success' | 'warning' | 'danger' | 'neutral';
 
 const stateConfig = {
-  idle: { eyebrow: 'GPS BELUM AKTIF', background: Colors.forest, text: Colors.surface },
-  checking: { eyebrow: 'MENGAMBIL LOKASI', background: Colors.forestMuted, text: Colors.surface },
-  success: { eyebrow: 'DI DALAM RADIUS', background: Colors.successBackground, text: Colors.successText },
-  warning: { eyebrow: 'PERIKSA LOKASI', background: Colors.warningBackground, text: Colors.warningText },
-  danger: { eyebrow: 'LOKASI BERMASALAH', background: Colors.dangerBackground, text: Colors.dangerText },
-  neutral: { eyebrow: 'STATUS LOKASI', background: Colors.surface, text: Colors.ink },
+  idle: {
+    eyebrow: 'GPS BELUM AKTIF',
+    background: Colors.forest,
+    border: Colors.border,
+    text: Colors.surface,
+  },
+  checking: {
+    eyebrow: 'MENGAMBIL LOKASI',
+    background: Colors.forestMuted,
+    border: Colors.border,
+    text: Colors.surface,
+  },
+  success: {
+    eyebrow: 'DI DALAM RADIUS',
+    background: Colors.successBackground,
+    border: Colors.successBorder,
+    text: Colors.successText,
+  },
+  warning: {
+    eyebrow: 'PERIKSA LOKASI',
+    background: Colors.warningBackground,
+    border: Colors.warningBorder,
+    text: Colors.warningText,
+  },
+  danger: {
+    eyebrow: 'LOKASI BERMASALAH',
+    background: Colors.dangerBackground,
+    border: Colors.dangerBorder,
+    text: Colors.dangerText,
+  },
+  neutral: {
+    eyebrow: 'STATUS LOKASI',
+    background: Colors.surface,
+    border: Colors.border,
+    text: Colors.ink,
+  },
 } as const;
 
 export function LocationActionCard({
@@ -34,12 +64,19 @@ export function LocationActionCard({
   const dark = state === 'idle' || state === 'checking';
 
   return (
-    <View style={[styles.card, { backgroundColor: config.background }]}>
+    <View
+      accessibilityLiveRegion="polite"
+      aria-live="polite"
+      style={[
+        styles.card,
+        { backgroundColor: config.background, borderColor: config.border },
+      ]}
+    >
       <AppText variant="label" color={config.text}>{config.eyebrow}</AppText>
       <AppText variant="subtitle" color={config.text}>{title}</AppText>
       <AppText variant="small" color={config.text}>{message}</AppText>
       {meta ? <AppText variant="label" color={config.text}>{meta}</AppText> : null}
-      {actionLabel && onAction ? (
+      {state !== 'checking' && actionLabel && onAction ? (
         <AppButton
           label={actionLabel}
           variant={dark ? 'primary' : 'secondary'}
@@ -52,6 +89,7 @@ export function LocationActionCard({
 
 const styles = StyleSheet.create({
   card: {
+    borderWidth: 1,
     borderRadius: Radius.hero,
     padding: Spacing.four,
     gap: Spacing.two,
