@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(158);
+select plan(208);
 
 select has_table('public', 'weather_snapshots', 'weather snapshots exist');
 select has_table('public', 'ai_generation_runs', 'generation runs exist');
@@ -2185,6 +2185,853 @@ select throws_ok(
   'P0001',
   'TASK_ALREADY_COMPLETED',
   'completed task rejects another evidence attempt'
+);
+
+reset role;
+
+insert into public.lahan (
+  id,
+  nama_lahan,
+  farmer_id,
+  jenis_tanaman,
+  lat_center,
+  lng_center,
+  radius_geofence_m,
+  status
+) values (
+  '20000000-0000-0000-0000-000000000004',
+  'Plot B Private Task 4',
+  '10000000-0000-0000-0000-000000000003',
+  'Kedelai',
+  -6.230000,
+  106.846666,
+  200,
+  'aktif'
+);
+
+insert into public.tasks (
+  id,
+  lahan_id,
+  assigned_to,
+  assigned_by,
+  judul,
+  deskripsi,
+  status,
+  scheduled_for,
+  requires_location
+) values
+  (
+    '80000000-0000-0000-0000-000000000001',
+    '20000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000001',
+    'Task silang Farmer A',
+    'Task Farmer A pada plot milik Farmer B untuk menguji akses lahan.',
+    'sedang_dikerjakan',
+    (now() at time zone 'Asia/Jakarta')::date,
+    true
+  ),
+  (
+    '80000000-0000-0000-0000-000000000002',
+    '20000000-0000-0000-0000-000000000004',
+    '10000000-0000-0000-0000-000000000003',
+    '10000000-0000-0000-0000-000000000001',
+    'Task privat Farmer B',
+    'Task yang hanya boleh terlihat oleh Farmer B dan internal.',
+    'sedang_dikerjakan',
+    (now() at time zone 'Asia/Jakarta')::date,
+    true
+  );
+
+insert into public.absensi (
+  id,
+  farmer_id,
+  lahan_id,
+  waktu_masuk,
+  lat,
+  lng,
+  status_geofence,
+  distance_m,
+  attendance_date
+) values
+  (
+    '90000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000002',
+    '20000000-0000-0000-0000-000000000002',
+    now(),
+    -6.210000,
+    106.826666,
+    'valid',
+    0,
+    (now() at time zone 'Asia/Jakarta')::date
+  ),
+  (
+    '90000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000003',
+    '20000000-0000-0000-0000-000000000004',
+    now(),
+    -6.230000,
+    106.846666,
+    'valid',
+    0,
+    (now() at time zone 'Asia/Jakarta')::date
+  );
+
+insert into public.task_evidence (
+  id,
+  task_id,
+  farmer_id,
+  lahan_id,
+  photo_path,
+  note,
+  attempt_number,
+  review_status
+) values
+  (
+    'a0000000-0000-0000-0000-000000000001',
+    '80000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000002',
+    '20000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000001/referenced.jpg',
+    'Bukti Farmer A untuk pengujian RLS.',
+    1,
+    'revision_requested'
+  ),
+  (
+    'a0000000-0000-0000-0000-000000000002',
+    '80000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000003',
+    '20000000-0000-0000-0000-000000000004',
+    '10000000-0000-0000-0000-000000000003/80000000-0000-0000-0000-000000000002/farmer-b.jpg',
+    'Bukti Farmer B untuk pengujian RLS.',
+    1,
+    'revision_requested'
+  );
+
+insert into public.rekomendasi_cuaca (
+  id,
+  lahan_id,
+  tanggal,
+  kondisi_cuaca,
+  rekomendasi_aktivitas
+) values
+  (
+    'b0000000-0000-0000-0000-000000000001',
+    '20000000-0000-0000-0000-000000000001',
+    (now() at time zone 'Asia/Jakarta')::date,
+    'Cerah',
+    'Pantau irigasi.'
+  ),
+  (
+    'b0000000-0000-0000-0000-000000000002',
+    '20000000-0000-0000-0000-000000000002',
+    (now() at time zone 'Asia/Jakarta')::date,
+    'Berawan',
+    'Periksa drainase.'
+  ),
+  (
+    'b0000000-0000-0000-0000-000000000003',
+    '20000000-0000-0000-0000-000000000004',
+    (now() at time zone 'Asia/Jakarta')::date,
+    'Hujan',
+    'Tunda pemupukan.'
+  );
+
+insert into storage.objects (bucket_id, name, owner, owner_id) values
+  (
+    'task-evidence',
+    '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000001/referenced.jpg',
+    '10000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000002'
+  ),
+  (
+    'task-evidence',
+    '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000001/orphan.jpg',
+    '10000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000002'
+  ),
+  (
+    'task-evidence',
+    '10000000-0000-0000-0000-000000000003/80000000-0000-0000-0000-000000000002/farmer-b.jpg',
+    '10000000-0000-0000-0000-000000000003',
+    '10000000-0000-0000-0000-000000000003'
+  );
+
+select is(
+  (
+    select count(*)
+    from pg_catalog.pg_class table_definition
+    join pg_catalog.pg_namespace namespace
+      on namespace.oid = table_definition.relnamespace
+    where namespace.nspname = 'public'
+      and table_definition.relname in (
+        'users',
+        'lahan',
+        'absensi',
+        'tasks',
+        'rekomendasi_cuaca',
+        'task_evidence',
+        'weather_snapshots',
+        'ai_generation_runs',
+        'ai_generation_targets',
+        'ai_task_drafts'
+      )
+      and table_definition.relrowsecurity
+  ),
+  10::bigint,
+  'RLS is enabled on every public operational table'
+);
+select has_function(
+  'public',
+  'can_access_plot',
+  array['uuid'],
+  'plot access helper exists'
+);
+select has_function(
+  'public',
+  'is_task_evidence_object_referenced',
+  array['text'],
+  'storage reference helper exists'
+);
+with helper(signature) as (
+  values
+    ('public.can_access_plot(uuid)'),
+    ('public.is_task_evidence_object_referenced(text)')
+)
+select ok(
+  count(*) = 2
+    and bool_and(function_definition.prosecdef)
+    and bool_and(
+      function_definition.proconfig = array['search_path=""']::text[]
+    ),
+  'RLS helpers are SECURITY DEFINER with an empty search path'
+)
+from helper
+join pg_catalog.pg_proc function_definition
+  on function_definition.oid = pg_catalog.to_regprocedure(helper.signature);
+select ok(
+  (
+    select function_definition.prosecdef
+      and function_definition.proconfig = array['search_path=""']::text[]
+    from pg_catalog.pg_proc function_definition
+    where function_definition.oid =
+      pg_catalog.to_regprocedure(
+        'public.sign_up_user(text,text,text,public.user_role)'
+      )
+  ),
+  'public signup is hardened as SECURITY DEFINER with empty search path'
+);
+select ok(
+  has_function_privilege(
+    'anon',
+    pg_catalog.to_regprocedure(
+      'public.sign_up_user(text,text,text,public.user_role)'
+    ),
+    'EXECUTE'
+  ),
+  'anonymous users can execute farmer signup'
+);
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    pg_catalog.to_regprocedure(
+      'public.sign_up_user(text,text,text,public.user_role)'
+    ),
+    'EXECUTE'
+  ),
+  'authenticated users cannot execute public signup'
+);
+select ok(
+  not has_function_privilege(
+    'service_role',
+    pg_catalog.to_regprocedure(
+      'public.sign_up_user(text,text,text,public.user_role)'
+    ),
+    'EXECUTE'
+  ),
+  'service role uses the administrative provisioning path instead of signup'
+);
+select ok(
+  has_table_privilege('authenticated', 'public.users', 'SELECT')
+    and not has_table_privilege('authenticated', 'public.users', 'INSERT')
+    and not has_table_privilege('authenticated', 'public.users', 'UPDATE')
+    and not has_table_privilege('authenticated', 'public.users', 'DELETE'),
+  'authenticated users can only select scoped user rows'
+);
+select ok(
+  has_table_privilege('authenticated', 'public.tasks', 'SELECT')
+    and has_table_privilege('authenticated', 'public.tasks', 'INSERT')
+    and not has_table_privilege('authenticated', 'public.tasks', 'UPDATE')
+    and not has_table_privilege('authenticated', 'public.tasks', 'DELETE'),
+  'authenticated task writes are limited to constrained manual inserts'
+);
+select ok(
+  has_table_privilege('authenticated', 'public.absensi', 'SELECT')
+    and not has_table_privilege('authenticated', 'public.absensi', 'INSERT')
+    and not has_table_privilege('authenticated', 'public.absensi', 'UPDATE')
+    and has_table_privilege('authenticated', 'public.task_evidence', 'SELECT')
+    and not has_table_privilege(
+      'authenticated',
+      'public.task_evidence',
+      'INSERT'
+    )
+    and not has_table_privilege(
+      'authenticated',
+      'public.task_evidence',
+      'UPDATE'
+    ),
+  'attendance and evidence writes are RPC-only'
+);
+select ok(
+  has_table_privilege('service_role', 'public.weather_snapshots', 'INSERT')
+    and has_table_privilege(
+      'service_role',
+      'public.ai_generation_runs',
+      'UPDATE'
+    )
+    and has_table_privilege(
+      'service_role',
+      'public.ai_generation_targets',
+      'INSERT'
+    )
+    and has_table_privilege(
+      'service_role',
+      'public.ai_task_drafts',
+      'INSERT'
+    ),
+  'service role retains direct Edge Function operations'
+);
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"10000000-0000-0000-0000-000000000001","role":"authenticated"}',
+  true
+);
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-0000-0000-000000000001',
+  true
+);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+
+select is(
+  (
+    select count(*)
+    from public.users
+    where id in (
+      '10000000-0000-0000-0000-000000000001',
+      '10000000-0000-0000-0000-000000000002',
+      '10000000-0000-0000-0000-000000000003'
+    )
+  ),
+  3::bigint,
+  'internal can read every operational fixture user'
+);
+select is(
+  (
+    select count(*)
+    from public.lahan
+    where id = '20000000-0000-0000-0000-000000000004'
+  ),
+  1::bigint,
+  'internal can read every plot'
+);
+select ok(
+  (select count(*) from public.ai_generation_runs) > 0,
+  'internal can read AI generation operations'
+);
+select ok(
+  (select count(*) from public.weather_snapshots) > 0,
+  'internal can read raw weather snapshots'
+);
+select lives_ok(
+  $$
+    insert into public.tasks (
+      id,
+      lahan_id,
+      assigned_to,
+      assigned_by,
+      judul,
+      deskripsi,
+      status,
+      scheduled_for,
+      source,
+      source_draft_id,
+      requires_location
+    ) values (
+      '81000000-0000-0000-0000-000000000001',
+      '20000000-0000-0000-0000-000000000001',
+      '10000000-0000-0000-0000-000000000002',
+      '10000000-0000-0000-0000-000000000001',
+      'Task manual internal',
+      'Task manual valid yang dibuat melalui kebijakan internal.',
+      'belum_dikerjakan',
+      (now() at time zone 'Asia/Jakarta')::date,
+      'manual',
+      null,
+      false
+    )
+  $$,
+  'internal can insert a constrained manual task'
+);
+select throws_ok(
+  $$
+    insert into public.tasks (
+      lahan_id,
+      assigned_to,
+      assigned_by,
+      judul,
+      deskripsi,
+      status,
+      scheduled_for,
+      source,
+      source_draft_id
+    ) values (
+      '20000000-0000-0000-0000-000000000001',
+      '10000000-0000-0000-0000-000000000002',
+      '10000000-0000-0000-0000-000000000003',
+      'Task forged assigner',
+      'Task ini harus ditolak karena assigned_by telah dipalsukan.',
+      'belum_dikerjakan',
+      (now() at time zone 'Asia/Jakarta')::date,
+      'manual',
+      null
+    )
+  $$,
+  '42501',
+  'new row violates row-level security policy for table "tasks"',
+  'internal cannot forge the manual task assigner'
+);
+select throws_ok(
+  $$
+    update public.tasks
+    set status = 'selesai'
+    where id = '81000000-0000-0000-0000-000000000001'
+  $$,
+  '42501',
+  'permission denied for table tasks',
+  'internal cannot bypass evidence review with direct task updates'
+);
+select throws_ok(
+  $$
+    update public.users
+    set role = 'internal'
+    where id = '10000000-0000-0000-0000-000000000002'
+  $$,
+  '42501',
+  'permission denied for table users',
+  'internal cannot rewrite roles through the client table'
+);
+
+reset role;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"10000000-0000-0000-0000-000000000002","role":"authenticated"}',
+  true
+);
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-0000-0000-000000000002',
+  true
+);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+
+select is(
+  (select array_agg(id order by id) from public.users),
+  array['10000000-0000-0000-0000-000000000002'::uuid],
+  'farmer reads only their own user row'
+);
+select is(
+  (select array_agg(id order by id) from public.lahan),
+  array[
+    '20000000-0000-0000-0000-000000000001'::uuid,
+    '20000000-0000-0000-0000-000000000002'::uuid,
+    '20000000-0000-0000-0000-000000000003'::uuid
+  ],
+  'farmer reads owned plots and plots referenced by assigned tasks'
+);
+select ok(
+  not exists (
+    select 1 from public.tasks where assigned_to <> auth.uid()
+  ),
+  'farmer reads only assigned tasks'
+);
+select ok(
+  not exists (
+    select 1 from public.absensi where farmer_id <> auth.uid()
+  ),
+  'farmer reads only their attendance'
+);
+select ok(
+  not exists (
+    select 1 from public.task_evidence where farmer_id <> auth.uid()
+  ),
+  'farmer reads only their evidence'
+);
+select is(
+  (
+    select
+      (select count(*) from public.weather_snapshots)
+      + (select count(*) from public.ai_generation_runs)
+      + (select count(*) from public.ai_generation_targets)
+      + (select count(*) from public.ai_task_drafts)
+  ),
+  0::bigint,
+  'farmer cannot read raw weather or AI operations'
+);
+select is(
+  (select array_agg(lahan_id order by lahan_id) from public.rekomendasi_cuaca),
+  array[
+    '20000000-0000-0000-0000-000000000001'::uuid,
+    '20000000-0000-0000-0000-000000000002'::uuid
+  ],
+  'farmer reads recommendations only for accessible plots'
+);
+select throws_ok(
+  $$
+    insert into public.task_evidence (
+      task_id,
+      farmer_id,
+      lahan_id,
+      photo_path,
+      attempt_number,
+      review_status
+    ) values (
+      '80000000-0000-0000-0000-000000000001',
+      '10000000-0000-0000-0000-000000000002',
+      '20000000-0000-0000-0000-000000000002',
+      'forged.jpg',
+      2,
+      'accepted'
+    )
+  $$,
+  '42501',
+  'permission denied for table task_evidence',
+  'farmer cannot forge evidence or review fields directly'
+);
+select throws_ok(
+  $$
+    insert into public.absensi (
+      farmer_id,
+      lahan_id,
+      lat,
+      lng,
+      status_geofence,
+      attendance_date
+    ) values (
+      '10000000-0000-0000-0000-000000000002',
+      '20000000-0000-0000-0000-000000000001',
+      -6.2,
+      106.8,
+      'valid',
+      (now() at time zone 'Asia/Jakarta')::date
+    )
+  $$,
+  '42501',
+  'permission denied for table absensi',
+  'farmer cannot bypass attendance validation'
+);
+select throws_ok(
+  $$
+    update public.tasks
+    set status = 'selesai'
+    where id = '80000000-0000-0000-0000-000000000001'
+  $$,
+  '42501',
+  'permission denied for table tasks',
+  'farmer cannot complete an assigned task directly'
+);
+select throws_ok(
+  $$
+    update public.users
+    set role = 'internal'
+    where id = auth.uid()
+  $$,
+  '42501',
+  'permission denied for table users',
+  'farmer cannot elevate their own role'
+);
+select ok(
+  exists (
+    select 1
+    from storage.objects
+    where bucket_id = 'task-evidence'
+      and name like auth.uid()::text || '/%'
+  )
+    and not exists (
+      select 1
+      from storage.objects
+      where bucket_id = 'task-evidence'
+        and name like
+          '10000000-0000-0000-0000-000000000003/%'
+    ),
+  'farmer reads only their storage folder'
+);
+select lives_ok(
+  $$
+    insert into storage.objects (bucket_id, name, owner, owner_id)
+    values (
+      'task-evidence',
+      '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000001/upload-valid.jpg',
+      '10000000-0000-0000-0000-000000000002',
+      '10000000-0000-0000-0000-000000000002'
+    )
+  $$,
+  'farmer can upload to an assigned non-completed task path'
+);
+select throws_ok(
+  $$
+    insert into storage.objects (bucket_id, name, owner, owner_id)
+    values (
+      'task-evidence',
+      '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000001/extra/invalid.jpg',
+      '10000000-0000-0000-0000-000000000002',
+      '10000000-0000-0000-0000-000000000002'
+    )
+  $$,
+  '42501',
+  'new row violates row-level security policy for table "objects"',
+  'storage upload rejects malformed extra path segments'
+);
+select throws_ok(
+  $$
+    insert into storage.objects (bucket_id, name, owner, owner_id)
+    values (
+      'task-evidence',
+      '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000002/cross-task.jpg',
+      '10000000-0000-0000-0000-000000000002',
+      '10000000-0000-0000-0000-000000000002'
+    )
+  $$,
+  '42501',
+  'new row violates row-level security policy for table "objects"',
+  'storage upload rejects another farmer task'
+);
+select throws_ok(
+  $$
+    insert into storage.objects (bucket_id, name, owner, owner_id)
+    values (
+      'task-evidence',
+      '10000000-0000-0000-0000-000000000002/70000000-0000-0000-0000-000000000001/completed.jpg',
+      '10000000-0000-0000-0000-000000000002',
+      '10000000-0000-0000-0000-000000000002'
+    )
+  $$,
+  '42501',
+  'new row violates row-level security policy for table "objects"',
+  'storage upload rejects completed tasks'
+);
+select set_config('storage.allow_delete_query', 'true', true);
+delete from storage.objects
+where bucket_id = 'task-evidence'
+  and name =
+    '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000001/orphan.jpg';
+select is(
+  (
+    select count(*)
+    from storage.objects
+    where bucket_id = 'task-evidence'
+      and name =
+        '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000001/orphan.jpg'
+  ),
+  0::bigint,
+  'farmer can clean up an unregistered own-path object'
+);
+delete from storage.objects
+where bucket_id = 'task-evidence'
+  and name =
+    '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000001/referenced.jpg';
+select is(
+  (
+    select count(*)
+    from storage.objects
+    where bucket_id = 'task-evidence'
+      and name =
+        '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000001/referenced.jpg'
+  ),
+  1::bigint,
+  'farmer cannot delete an object referenced by immutable evidence'
+);
+delete from storage.objects
+where bucket_id = 'task-evidence'
+  and name =
+    '10000000-0000-0000-0000-000000000003/80000000-0000-0000-0000-000000000002/farmer-b.jpg';
+
+reset role;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"10000000-0000-0000-0000-000000000003","role":"authenticated"}',
+  true
+);
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-0000-0000-000000000003',
+  true
+);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+
+select ok(
+  exists (
+    select 1
+    from public.tasks
+    where id = '80000000-0000-0000-0000-000000000002'
+  )
+    and not exists (
+      select 1
+      from public.tasks
+      where id = '80000000-0000-0000-0000-000000000001'
+    ),
+  'farmer B sees own task but not Farmer A task'
+);
+select is(
+  (
+    select count(*)
+    from public.absensi
+    where id = '90000000-0000-0000-0000-000000000001'
+  ),
+  0::bigint,
+  'farmer B cannot read Farmer A attendance'
+);
+select is(
+  (
+    select count(*)
+    from public.task_evidence
+    where id = 'a0000000-0000-0000-0000-000000000001'
+  ),
+  0::bigint,
+  'farmer B cannot read Farmer A evidence'
+);
+select is(
+  (
+    select count(*)
+    from storage.objects
+    where bucket_id = 'task-evidence'
+      and name =
+        '10000000-0000-0000-0000-000000000003/80000000-0000-0000-0000-000000000002/farmer-b.jpg'
+  ),
+  1::bigint,
+  'Farmer A cannot delete Farmer B storage object'
+);
+
+reset role;
+select set_config('request.jwt.claims', '{"role":"authenticated"}', true);
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+
+select is(
+  (
+    select
+      (select count(*) from public.users)
+      + (select count(*) from public.lahan)
+      + (select count(*) from public.tasks)
+  ),
+  0::bigint,
+  'subject-less authenticated requests cannot read operations'
+);
+
+reset role;
+select set_config('request.jwt.claims', '{"role":"anon"}', true);
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('request.jwt.claim.role', 'anon', true);
+set local role anon;
+
+select throws_ok(
+  $$ select count(*) from public.users $$,
+  '42501',
+  'permission denied for table users',
+  'anonymous users cannot read operational users'
+);
+select throws_ok(
+  $$
+    select public.sign_up_user(
+      'forbidden-internal@example.test',
+      'password-aman',
+      'Forbidden Internal',
+      'internal'::public.user_role
+    )
+  $$,
+  'P0001',
+  'SIGNUP_ROLE_FORBIDDEN',
+  'public signup cannot create an internal account'
+);
+select throws_ok(
+  $$
+    select public.sign_up_user(
+      'null-role@example.test',
+      'password-aman',
+      'Null Role',
+      null::public.user_role
+    )
+  $$,
+  'P0001',
+  'SIGNUP_ROLE_FORBIDDEN',
+  'public signup rejects a NULL role'
+);
+select throws_ok(
+  $$
+    select public.sign_up_user(
+      'short-password@example.test',
+      'short',
+      'Short Password',
+      'farmer'::public.user_role
+    )
+  $$,
+  'P0001',
+  'SIGNUP_PASSWORD_INVALID',
+  'public signup enforces bounded passwords'
+);
+select lives_ok(
+  $$
+    select public.sign_up_user(
+      'task4-farmer-signup@example.test',
+      'password-aman',
+      'Farmer Signup Task 4',
+      'farmer'::public.user_role
+    )
+  $$,
+  'public signup can create a bounded farmer account'
+);
+
+reset role;
+select ok(
+  exists (
+    select 1
+    from public.users app_user
+    join auth.identities identity
+      on identity.user_id = app_user.id
+    where app_user.email = 'task4-farmer-signup@example.test'
+      and app_user.role = 'farmer'::public.user_role
+      and identity.provider = 'email'
+  ),
+  'farmer signup creates matching auth identity and farmer profile'
+);
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"10000000-0000-0000-0000-000000000001","role":"authenticated"}',
+  true
+);
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-0000-0000-000000000001',
+  true
+);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+
+select is(
+  (
+    select count(*)
+    from storage.objects
+    where bucket_id = 'task-evidence'
+      and name =
+        '10000000-0000-0000-0000-000000000003/80000000-0000-0000-0000-000000000002/farmer-b.jpg'
+  ),
+  1::bigint,
+  'internal can read every evidence storage object'
 );
 
 reset role;

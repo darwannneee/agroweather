@@ -10,6 +10,8 @@ create table public.weather_snapshots (
   created_at timestamptz not null default now()
 );
 
+alter table public.weather_snapshots enable row level security;
+
 create table public.ai_generation_runs (
   id uuid primary key default gen_random_uuid(),
   trigger text not null check (trigger in ('cron', 'manual')),
@@ -27,6 +29,8 @@ create table public.ai_generation_runs (
   started_at timestamptz not null default now(),
   completed_at timestamptz
 );
+
+alter table public.ai_generation_runs enable row level security;
 
 create table public.ai_generation_targets (
   id uuid primary key default gen_random_uuid(),
@@ -81,6 +85,8 @@ create table public.ai_generation_targets (
   unique (run_id, lahan_id),
   unique (lahan_id, scheduled_for, version)
 );
+
+alter table public.ai_generation_targets enable row level security;
 
 create or replace function
   public.protect_ai_generation_target_request_payload()
@@ -147,6 +153,8 @@ create table public.ai_task_drafts (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.ai_task_drafts enable row level security;
 
 alter table public.tasks
   add column scheduled_for date,

@@ -33,6 +33,140 @@ revoke all on function public.is_internal()
 grant execute on function public.is_internal()
   to authenticated;
 
+alter table public.users enable row level security;
+
+drop policy if exists "users self select" on public.users;
+drop policy if exists "users self insert" on public.users;
+drop policy if exists "users self update" on public.users;
+drop policy if exists "auth read users for assignment" on public.users;
+drop policy if exists "logged_in_full_access" on public.users;
+drop policy if exists "users scoped select" on public.users;
+
+revoke all on table public.users from anon, authenticated;
+grant select on table public.users to authenticated;
+grant all on table public.users to service_role;
+
+create policy "users scoped select"
+on public.users
+for select
+to authenticated
+using (
+  auth.uid() = id
+  or public.is_internal()
+);
+
+create or replace function public.sign_up_user(
+  p_email text,
+  p_password text,
+  p_nama text,
+  p_role public.user_role
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  user_id uuid;
+  normalized_email text := pg_catalog.lower(pg_catalog.btrim(p_email));
+  normalized_name text := pg_catalog.btrim(p_nama);
+begin
+  if p_role is distinct from 'farmer'::public.user_role then
+    raise exception 'SIGNUP_ROLE_FORBIDDEN';
+  end if;
+
+  if normalized_email is null
+    or pg_catalog.char_length(normalized_email) not between 5 and 254
+    or normalized_email !~
+      '^[A-Za-z0-9.!#$%&''*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}$'
+  then
+    raise exception 'SIGNUP_EMAIL_INVALID';
+  end if;
+
+  if p_password is null
+    or pg_catalog.octet_length(p_password) not between 8 and 72
+  then
+    raise exception 'SIGNUP_PASSWORD_INVALID';
+  end if;
+
+  if normalized_name is null
+    or pg_catalog.char_length(normalized_name) not between 2 and 120
+  then
+    raise exception 'SIGNUP_NAME_INVALID';
+  end if;
+
+  if exists (
+    select 1
+    from auth.users existing
+    where pg_catalog.lower(existing.email) = normalized_email
+  ) then
+    raise exception 'SIGNUP_EMAIL_EXISTS';
+  end if;
+
+  user_id := pg_catalog.gen_random_uuid();
+
+  insert into auth.users (
+    id,
+    email,
+    encrypted_password,
+    email_confirmed_at,
+    created_at,
+    updated_at,
+    aud,
+    role
+  ) values (
+    user_id,
+    normalized_email,
+    extensions.crypt(p_password, extensions.gen_salt('bf')),
+    pg_catalog.now(),
+    pg_catalog.now(),
+    pg_catalog.now(),
+    'authenticated',
+    'authenticated'
+  );
+
+  insert into auth.identities (
+    user_id,
+    provider_id,
+    identity_data,
+    provider,
+    last_sign_in_at,
+    created_at,
+    updated_at
+  ) values (
+    user_id,
+    user_id::text,
+    pg_catalog.jsonb_build_object(
+      'sub',
+      user_id::text,
+      'email',
+      normalized_email
+    ),
+    'email',
+    pg_catalog.now(),
+    pg_catalog.now(),
+    pg_catalog.now()
+  );
+
+  insert into public.users (id, email, nama, role)
+  values (
+    user_id,
+    normalized_email,
+    normalized_name,
+    'farmer'::public.user_role
+  );
+
+  return user_id;
+end;
+$$;
+
+revoke all on function public.sign_up_user(
+  text, text, text, public.user_role
+) from public, anon, authenticated, service_role;
+grant execute on function public.sign_up_user(
+  text, text, text, public.user_role
+) to anon;
+
 create or replace function public.replace_ai_task_drafts(
   p_run_id uuid,
   p_lahan_id uuid,
