@@ -57,6 +57,10 @@ declare
   target_id uuid;
   inserted_count integer := 0;
   requested_count integer;
+  normalized_model text;
+  normalized_summary text;
+  incoming_canonical jsonb := '[]'::jsonb;
+  stored_canonical jsonb;
   draft record;
 begin
   if p_run_id is null
@@ -83,12 +87,59 @@ begin
   then
     raise exception 'AI_MODEL_INVALID';
   end if;
+  normalized_model := pg_catalog.btrim(p_model);
 
   if p_result_summary is not null
     and pg_catalog.char_length(pg_catalog.btrim(p_result_summary)) > 2000
   then
     raise exception 'GENERATION_SUMMARY_INVALID';
   end if;
+  normalized_summary := nullif(pg_catalog.btrim(p_result_summary), '');
+
+  for draft in
+    select parsed.*
+    from pg_catalog.jsonb_to_recordset(p_drafts) as parsed(
+      judul text,
+      deskripsi text,
+      priority text,
+      requires_location boolean,
+      ai_reason text
+    )
+  loop
+    if draft.judul is null
+      or pg_catalog.char_length(pg_catalog.btrim(draft.judul))
+        not between 3 and 120
+      or draft.deskripsi is null
+      or pg_catalog.char_length(pg_catalog.btrim(draft.deskripsi))
+        not between 10 and 1500
+      or draft.priority is null
+      or draft.priority not in ('low', 'medium', 'high')
+      or draft.requires_location is null
+      or draft.ai_reason is null
+      or pg_catalog.char_length(pg_catalog.btrim(draft.ai_reason))
+        not between 3 and 800
+    then
+      raise exception 'AI_DRAFT_INVALID';
+    end if;
+
+    incoming_canonical := incoming_canonical
+      || pg_catalog.jsonb_build_array(
+        pg_catalog.jsonb_build_object(
+          'judul', pg_catalog.btrim(draft.judul),
+          'deskripsi', pg_catalog.btrim(draft.deskripsi),
+          'priority', draft.priority,
+          'requires_location', draft.requires_location,
+          'ai_reason', pg_catalog.btrim(draft.ai_reason)
+        )
+      );
+  end loop;
+
+  select coalesce(
+    pg_catalog.jsonb_agg(element.item order by element.item::text),
+    '[]'::jsonb
+  )
+  into incoming_canonical
+  from pg_catalog.jsonb_array_elements(incoming_canonical) element(item);
 
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended(
@@ -96,33 +147,6 @@ begin
       0
     )
   );
-
-  select target.*
-  into existing_target
-  from public.ai_generation_targets target
-  where target.run_id = p_run_id
-    and target.lahan_id = p_lahan_id
-  for update;
-
-  if found then
-    if existing_target.status = 'succeeded'
-      and existing_target.scheduled_for = p_scheduled_for
-      and existing_target.weather_snapshot_id = p_weather_snapshot_id
-      and existing_target.draft_count = requested_count
-      and existing_target.result_summary is not distinct from
-        nullif(pg_catalog.btrim(p_result_summary), '')
-      and not exists (
-        select 1
-        from public.ai_task_drafts existing_draft
-        where existing_draft.generation_target_id = existing_target.id
-          and existing_draft.model <> pg_catalog.btrim(p_model)
-      )
-    then
-      return existing_target.id;
-    end if;
-
-    raise exception 'GENERATION_RETRY_MISMATCH';
-  end if;
 
   select run.*
   into generation_run
@@ -134,9 +158,52 @@ begin
     raise exception 'GENERATION_RUN_NOT_FOUND';
   end if;
 
+  if generation_run.scheduled_for <> p_scheduled_for then
+    raise exception 'GENERATION_RUN_INVALID';
+  end if;
+
+  select target.*
+  into existing_target
+  from public.ai_generation_targets target
+  where target.run_id = p_run_id
+    and target.lahan_id = p_lahan_id
+  for update;
+
+  if found then
+    select coalesce(
+      pg_catalog.jsonb_agg(canonical.item order by canonical.item::text),
+      '[]'::jsonb
+    )
+    into stored_canonical
+    from (
+      select pg_catalog.jsonb_build_object(
+        'judul', pg_catalog.btrim(existing_draft.judul),
+        'deskripsi', pg_catalog.btrim(existing_draft.deskripsi),
+        'priority', existing_draft.priority,
+        'requires_location', existing_draft.requires_location,
+        'ai_reason', pg_catalog.btrim(existing_draft.ai_reason)
+      ) as item
+      from public.ai_task_drafts existing_draft
+      where existing_draft.generation_target_id = existing_target.id
+    ) canonical;
+
+    if existing_target.status = 'succeeded'
+      and existing_target.scheduled_for = p_scheduled_for
+      and existing_target.weather_snapshot_id = p_weather_snapshot_id
+      and existing_target.draft_count = requested_count
+      and existing_target.result_summary is not distinct from
+        normalized_summary
+      and generation_run.model = normalized_model
+      and stored_canonical = incoming_canonical
+    then
+      return existing_target.id;
+    end if;
+
+    raise exception 'GENERATION_RETRY_MISMATCH';
+  end if;
+
   if generation_run.status <> 'running'
-    or generation_run.scheduled_for <> p_scheduled_for
-    or generation_run.model <> pg_catalog.btrim(p_model)
+    or generation_run.model <> normalized_model
   then
     raise exception 'GENERATION_RUN_INVALID';
   end if;
@@ -220,13 +287,13 @@ begin
     'running',
     0,
     p_weather_snapshot_id,
-    nullif(pg_catalog.btrim(p_result_summary), '')
+    normalized_summary
   )
   returning id into target_id;
 
   for draft in
     select parsed.*
-    from pg_catalog.jsonb_to_recordset(p_drafts) as parsed(
+    from pg_catalog.jsonb_to_recordset(incoming_canonical) as parsed(
       judul text,
       deskripsi text,
       priority text,
@@ -234,22 +301,6 @@ begin
       ai_reason text
     )
   loop
-    if draft.judul is null
-      or pg_catalog.char_length(pg_catalog.btrim(draft.judul))
-        not between 3 and 120
-      or draft.deskripsi is null
-      or pg_catalog.char_length(pg_catalog.btrim(draft.deskripsi))
-        not between 10 and 1500
-      or draft.priority is null
-      or draft.priority not in ('low', 'medium', 'high')
-      or draft.requires_location is null
-      or draft.ai_reason is null
-      or pg_catalog.char_length(pg_catalog.btrim(draft.ai_reason))
-        not between 3 and 800
-    then
-      raise exception 'AI_DRAFT_INVALID';
-    end if;
-
     insert into public.ai_task_drafts (
       generation_target_id,
       lahan_id,
@@ -267,12 +318,12 @@ begin
       p_lahan_id,
       plot.farmer_id,
       p_scheduled_for,
-      pg_catalog.btrim(draft.judul),
-      pg_catalog.btrim(draft.deskripsi),
+      draft.judul,
+      draft.deskripsi,
       draft.priority,
       draft.requires_location,
-      pg_catalog.btrim(draft.ai_reason),
-      pg_catalog.btrim(p_model),
+      draft.ai_reason,
+      normalized_model,
       p_weather_snapshot_id
     );
 
@@ -499,6 +550,10 @@ set search_path = ''
 as $$
 declare
   draft public.ai_task_drafts%rowtype;
+  approval_plot public.lahan%rowtype;
+  assignee public.users%rowtype;
+  draft_lahan_id uuid;
+  draft_scheduled_for date;
   task_id uuid;
 begin
   if not public.is_internal() then
@@ -520,6 +575,22 @@ begin
     raise exception 'DRAFT_APPROVAL_INPUT_INVALID';
   end if;
 
+  select candidate.lahan_id, candidate.scheduled_for
+  into draft_lahan_id, draft_scheduled_for
+  from public.ai_task_drafts candidate
+  where candidate.id = p_draft_id;
+
+  if not found then
+    raise exception 'DRAFT_NOT_FOUND';
+  end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(
+      draft_lahan_id::text || ':' || draft_scheduled_for::text,
+      0
+    )
+  );
+
   select candidate.*
   into draft
   from public.ai_task_drafts candidate
@@ -534,21 +605,23 @@ begin
     raise exception 'DRAFT_NOT_PENDING';
   end if;
 
-  if not exists (
-    select 1
-    from public.lahan plot
-    where plot.id = draft.lahan_id
-      and plot.status = 'aktif'
-  ) then
+  select plot.*
+  into approval_plot
+  from public.lahan plot
+  where plot.id = draft.lahan_id
+  for share;
+
+  if not found or approval_plot.status <> 'aktif' then
     raise exception 'PLOT_INACTIVE';
   end if;
 
-  if not exists (
-    select 1
-    from public.users farmer
-    where farmer.id = p_assignee_id
-      and farmer.role = 'farmer'::public.user_role
-  ) then
+  select farmer.*
+  into assignee
+  from public.users farmer
+  where farmer.id = p_assignee_id
+  for share;
+
+  if not found or assignee.role <> 'farmer'::public.user_role then
     raise exception 'ASSIGNEE_NOT_FARMER';
   end if;
 
@@ -619,6 +692,7 @@ declare
   pending_count integer;
   draft_id uuid;
   draft public.ai_task_drafts%rowtype;
+  draft_key record;
   task_ids uuid[] := array[]::uuid[];
 begin
   if not public.is_internal() then
@@ -644,6 +718,29 @@ begin
   if found_count <> requested_count then
     raise exception 'DRAFT_SELECTION_DUPLICATE';
   end if;
+
+  select pg_catalog.count(*)
+  into found_count
+  from public.ai_task_drafts candidate
+  where candidate.id = any(p_draft_ids);
+
+  if found_count <> requested_count then
+    raise exception 'DRAFT_NOT_FOUND';
+  end if;
+
+  for draft_key in
+    select distinct candidate.lahan_id, candidate.scheduled_for
+    from public.ai_task_drafts candidate
+    where candidate.id = any(p_draft_ids)
+    order by candidate.lahan_id, candidate.scheduled_for
+  loop
+    perform pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended(
+        draft_key.lahan_id::text || ':' || draft_key.scheduled_for::text,
+        0
+      )
+    );
+  end loop;
 
   select pg_catalog.count(*)
   into found_count
@@ -772,7 +869,10 @@ declare
   haversine_a double precision;
   distance_m numeric;
 begin
-  if public.current_user_role() <> 'farmer'::public.user_role then
+  if caller_farmer_id is null
+    or public.current_user_role()
+      is distinct from 'farmer'::public.user_role
+  then
     raise exception 'FARMER_REQUIRED';
   end if;
 
@@ -932,9 +1032,13 @@ security definer
 set search_path = ''
 as $$
 declare
+  caller_farmer_id uuid := auth.uid();
   task public.tasks%rowtype;
 begin
-  if public.current_user_role() <> 'farmer'::public.user_role then
+  if caller_farmer_id is null
+    or public.current_user_role()
+      is distinct from 'farmer'::public.user_role
+  then
     raise exception 'FARMER_REQUIRED';
   end if;
 
@@ -948,7 +1052,7 @@ begin
     raise exception 'TASK_NOT_FOUND';
   end if;
 
-  if task.assigned_to <> auth.uid() then
+  if task.assigned_to is distinct from caller_farmer_id then
     raise exception 'TASK_NOT_ASSIGNED';
   end if;
 
@@ -977,7 +1081,7 @@ create or replace function public.register_task_evidence(
   p_note text,
   p_lat numeric,
   p_lng numeric,
-  p_ai_summary text
+  p_ai_placeholder_summary text
 )
 returns public.task_evidence
 language plpgsql
@@ -985,7 +1089,7 @@ security definer
 set search_path = ''
 as $$
 declare
-  farmer_id uuid := auth.uid();
+  caller_farmer_id uuid := auth.uid();
   task public.tasks%rowtype;
   plot public.lahan%rowtype;
   evidence public.task_evidence%rowtype;
@@ -997,7 +1101,10 @@ declare
   haversine_a double precision;
   distance_m numeric;
 begin
-  if public.current_user_role() <> 'farmer'::public.user_role then
+  if caller_farmer_id is null
+    or public.current_user_role()
+      is distinct from 'farmer'::public.user_role
+  then
     raise exception 'FARMER_REQUIRED';
   end if;
 
@@ -1011,7 +1118,7 @@ begin
     raise exception 'TASK_NOT_FOUND';
   end if;
 
-  if task.assigned_to <> farmer_id then
+  if task.assigned_to is distinct from caller_farmer_id then
     raise exception 'TASK_NOT_ASSIGNED';
   end if;
 
@@ -1021,7 +1128,8 @@ begin
 
   normalized_path := pg_catalog.btrim(p_photo_path);
   normalized_note := nullif(pg_catalog.btrim(p_note), '');
-  normalized_summary := nullif(pg_catalog.btrim(p_ai_summary), '');
+  normalized_summary :=
+    nullif(pg_catalog.btrim(p_ai_placeholder_summary), '');
 
   if normalized_note is not null
     and pg_catalog.char_length(normalized_note) > 1500
@@ -1036,7 +1144,7 @@ begin
   end if;
 
   required_path_pattern :=
-    '^' || farmer_id::text || '/' || task.id::text
+    '^' || caller_farmer_id::text || '/' || task.id::text
     || '/[A-Za-z0-9][A-Za-z0-9._-]{0,180}\.(jpg|jpeg|png)$';
 
   if normalized_path is null
@@ -1165,7 +1273,7 @@ begin
     review_status
   ) values (
     task.id,
-    farmer_id,
+    caller_farmer_id,
     task.lahan_id,
     normalized_path,
     normalized_note,

@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(128);
+select plan(144);
 
 select has_table('public', 'weather_snapshots', 'weather snapshots exist');
 select has_table('public', 'ai_generation_runs', 'generation runs exist');
@@ -153,6 +153,79 @@ select has_function(
   'review_task_evidence',
   array['uuid', 'text', 'text'],
   'review evidence RPC exists'
+);
+
+select is(
+  (
+    select function_definition.proargnames[6]
+    from pg_catalog.pg_proc function_definition
+    where function_definition.oid =
+      'public.register_task_evidence(uuid,text,text,numeric,numeric,text)'
+        ::regprocedure
+  ),
+  'p_ai_placeholder_summary',
+  'evidence RPC exposes the documented AI placeholder argument name'
+);
+
+with expected_function(signature) as (
+  values
+    ('public.current_user_role()'),
+    ('public.is_internal()'),
+    ('public.replace_ai_task_drafts(uuid,uuid,date,uuid,text,text,jsonb)'),
+    ('public.record_ai_generation_target(uuid,uuid,date,text,text,text,uuid)'),
+    ('public.approve_ai_task_draft(uuid,uuid,text,text,text,boolean)'),
+    ('public.bulk_approve_ai_task_drafts(uuid[])'),
+    ('public.reject_ai_task_draft(uuid,text)'),
+    ('public.start_assigned_task(uuid)'),
+    ('public.register_attendance(uuid,numeric,numeric)'),
+    ('public.register_task_evidence(uuid,text,text,numeric,numeric,text)'),
+    ('public.review_task_evidence(uuid,text,text)')
+)
+select ok(
+  pg_catalog.count(*) = 11
+    and pg_catalog.bool_and(function_definition.prosecdef),
+  'all operational RPCs are SECURITY DEFINER'
+)
+from expected_function
+join pg_catalog.pg_proc function_definition
+  on function_definition.oid = expected_function.signature::regprocedure;
+
+with expected_function(signature) as (
+  values
+    ('public.current_user_role()'),
+    ('public.is_internal()'),
+    ('public.replace_ai_task_drafts(uuid,uuid,date,uuid,text,text,jsonb)'),
+    ('public.record_ai_generation_target(uuid,uuid,date,text,text,text,uuid)'),
+    ('public.approve_ai_task_draft(uuid,uuid,text,text,text,boolean)'),
+    ('public.bulk_approve_ai_task_drafts(uuid[])'),
+    ('public.reject_ai_task_draft(uuid,text)'),
+    ('public.start_assigned_task(uuid)'),
+    ('public.register_attendance(uuid,numeric,numeric)'),
+    ('public.register_task_evidence(uuid,text,text,numeric,numeric,text)'),
+    ('public.review_task_evidence(uuid,text,text)')
+)
+select ok(
+  pg_catalog.count(*) = 11
+    and pg_catalog.bool_and(
+      function_definition.proconfig = array['search_path=""']::text[]
+    ),
+  'all operational RPCs pin an exactly empty search path'
+)
+from expected_function
+join pg_catalog.pg_proc function_definition
+  on function_definition.oid = expected_function.signature::regprocedure;
+
+select ok(
+  pg_catalog.strpos(
+    pg_catalog.lower(
+      pg_catalog.pg_get_functiondef(
+        'public.approve_ai_task_draft(uuid,uuid,text,text,text,boolean)'
+          ::regprocedure
+      )
+    ),
+    'for share'
+  ) > 0,
+  'draft approval locks the active plot and selected assignee'
 );
 
 select ok(
@@ -537,6 +610,14 @@ insert into public.ai_generation_runs (
     'running',
     'test/model',
     1
+  ),
+  (
+    '40000000-0000-0000-0000-000000000004',
+    'manual',
+    (now() at time zone 'Asia/Jakarta')::date,
+    'running',
+    'test/model',
+    1
   );
 
 insert into public.ai_generation_targets (
@@ -571,21 +652,58 @@ insert into public.ai_task_drafts (
   requires_location,
   ai_reason,
   model,
-  weather_snapshot_id
-) values (
-  '60000000-0000-0000-0000-000000000001',
-  '50000000-0000-0000-0000-000000000001',
-  '20000000-0000-0000-0000-000000000001',
-  '10000000-0000-0000-0000-000000000002',
-  (now() at time zone 'Asia/Jakarta')::date,
-  'Draft lama',
-  'Draft lama yang harus digantikan.',
-  'medium',
-  true,
-  'Digantikan oleh hasil generasi terbaru.',
-  'test/model',
-  '30000000-0000-0000-0000-000000000001'
-);
+  weather_snapshot_id,
+  status,
+  rejection_reason
+) values
+  (
+    '60000000-0000-0000-0000-000000000001',
+    '50000000-0000-0000-0000-000000000001',
+    '20000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000002',
+    (now() at time zone 'Asia/Jakarta')::date,
+    'Draft lama',
+    'Draft lama yang harus digantikan.',
+    'medium',
+    true,
+    'Digantikan oleh hasil generasi terbaru.',
+    'test/model',
+    '30000000-0000-0000-0000-000000000001',
+    'pending',
+    null
+  ),
+  (
+    '60000000-0000-0000-0000-000000000010',
+    '50000000-0000-0000-0000-000000000001',
+    '20000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000002',
+    (now() at time zone 'Asia/Jakarta')::date,
+    'Draft historis disetujui',
+    'Draft historis ini tidak boleh diubah saat regenerasi.',
+    'medium',
+    false,
+    'Riwayat persetujuan harus tetap dapat diaudit.',
+    'test/model',
+    '30000000-0000-0000-0000-000000000001',
+    'approved',
+    null
+  ),
+  (
+    '60000000-0000-0000-0000-000000000011',
+    '50000000-0000-0000-0000-000000000001',
+    '20000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000002',
+    (now() at time zone 'Asia/Jakarta')::date,
+    'Draft historis ditolak',
+    'Draft historis ini juga tidak boleh diubah saat regenerasi.',
+    'low',
+    false,
+    'Riwayat penolakan harus tetap dapat diaudit.',
+    'test/model',
+    '30000000-0000-0000-0000-000000000001',
+    'rejected',
+    'Tidak sesuai kondisi saat itu.'
+  );
 
 set local role service_role;
 
@@ -650,6 +768,70 @@ select lives_ok(
 );
 
 reset role;
+update public.ai_generation_runs
+set status = 'succeeded'
+where id = '40000000-0000-0000-0000-000000000002';
+set local role service_role;
+
+select lives_ok(
+  $$
+    select public.replace_ai_task_drafts(
+      '40000000-0000-0000-0000-000000000002',
+      '20000000-0000-0000-0000-000000000001',
+      (now() at time zone 'Asia/Jakarta')::date,
+      '30000000-0000-0000-0000-000000000001',
+      'test/model',
+      'Dua draft baru',
+      '[
+        {"judul":"Cek drainase","deskripsi":"Periksa seluruh saluran drainase lahan.","priority":"high","requires_location":true,"ai_reason":"Hujan diperkirakan meningkat."},
+        {"judul":"Pantau daun","deskripsi":"Amati kondisi daun dan catat perubahan warna.","priority":"medium","requires_location":false,"ai_reason":"Kelembapan cukup tinggi hari ini."}
+      ]'::jsonb
+    )
+  $$,
+  'exact retry remains idempotent after the run becomes terminal'
+);
+
+select throws_ok(
+  $$
+    select public.replace_ai_task_drafts(
+      '40000000-0000-0000-0000-000000000002',
+      '20000000-0000-0000-0000-000000000001',
+      (now() at time zone 'Asia/Jakarta')::date,
+      '30000000-0000-0000-0000-000000000001',
+      'test/model',
+      'Dua draft baru',
+      '[
+        {"judul":"Tugas berbeda","deskripsi":"Payload berbeda dengan jumlah draft yang sama.","priority":"high","requires_location":true,"ai_reason":"Retry ini bukan payload asli."},
+        {"judul":"Pantau gulma","deskripsi":"Periksa pertumbuhan gulma di seluruh petak.","priority":"medium","requires_location":false,"ai_reason":"Payload retry telah berubah."}
+      ]'::jsonb
+    )
+  $$,
+  'P0001',
+  'GENERATION_RETRY_MISMATCH',
+  'same-count retry rejects a different normalized draft payload'
+);
+
+select throws_ok(
+  $$
+    select public.replace_ai_task_drafts(
+      '40000000-0000-0000-0000-000000000002',
+      '20000000-0000-0000-0000-000000000001',
+      (now() at time zone 'Asia/Jakarta')::date,
+      '30000000-0000-0000-0000-000000000001',
+      'test/model',
+      'Dua draft baru',
+      '[
+        {"judul":"x","deskripsi":"Payload invalid tidak boleh lolos retry.","priority":"high","requires_location":true,"ai_reason":"Judul terlalu pendek."},
+        {"judul":"Pantau daun","deskripsi":"Amati kondisi daun dan catat perubahan warna.","priority":"medium","requires_location":false,"ai_reason":"Kelembapan cukup tinggi hari ini."}
+      ]'::jsonb
+    )
+  $$,
+  'P0001',
+  'AI_DRAFT_INVALID',
+  'retry validates every incoming draft before idempotent return'
+);
+
+reset role;
 
 select is(
   (
@@ -659,6 +841,24 @@ select is(
   ),
   'superseded',
   'replacement supersedes only the prior pending draft'
+);
+select is(
+  (
+    select status
+    from public.ai_task_drafts
+    where id = '60000000-0000-0000-0000-000000000010'
+  ),
+  'approved',
+  'replacement preserves approved historical drafts'
+);
+select is(
+  (
+    select status
+    from public.ai_task_drafts
+    where id = '60000000-0000-0000-0000-000000000011'
+  ),
+  'rejected',
+  'replacement preserves rejected historical drafts'
 );
 select is(
   (
@@ -743,6 +943,37 @@ select lives_ok(
     )
   $$,
   'service role records a failed generation target'
+);
+
+select lives_ok(
+  $$
+    select public.replace_ai_task_drafts(
+      '40000000-0000-0000-0000-000000000004',
+      '20000000-0000-0000-0000-000000000002',
+      (now() at time zone 'Asia/Jakarta')::date,
+      '30000000-0000-0000-0000-000000000002',
+      'test/model',
+      'Tidak ada task yang perlu dibuat.',
+      '[]'::jsonb
+    )
+  $$,
+  'generation can persist an intentional zero-draft result'
+);
+select throws_ok(
+  $$
+    select public.replace_ai_task_drafts(
+      '40000000-0000-0000-0000-000000000004',
+      '20000000-0000-0000-0000-000000000002',
+      (now() at time zone 'Asia/Jakarta')::date,
+      '30000000-0000-0000-0000-000000000002',
+      'other/model',
+      'Tidak ada task yang perlu dibuat.',
+      '[]'::jsonb
+    )
+  $$,
+  'P0001',
+  'GENERATION_RETRY_MISMATCH',
+  'zero-draft retry still verifies the normalized model'
 );
 
 reset role;
@@ -866,6 +1097,25 @@ insert into public.ai_task_drafts (
     'Rekomendasi tidak lagi sesuai kondisi operasional.',
     'test/model',
     '30000000-0000-0000-0000-000000000001'
+  ),
+  (
+    '60000000-0000-0000-0000-000000000007',
+    (
+      select id
+      from public.ai_generation_targets
+      where lahan_id = '20000000-0000-0000-0000-000000000001'
+        and is_current
+    ),
+    '20000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000001',
+    (now() at time zone 'Asia/Jakarta')::date,
+    'Draft assignee invalid',
+    'Draft kedua memaksa kegagalan setelah insert bulk pertama.',
+    'medium',
+    true,
+    'Assignee internal tidak boleh menerima task petani.',
+    'test/model',
+    '30000000-0000-0000-0000-000000000001'
   );
 
 update public.ai_task_drafts
@@ -964,23 +1214,39 @@ select throws_ok(
     select public.bulk_approve_ai_task_drafts(
       array[
         '60000000-0000-0000-0000-000000000003'::uuid,
-        '60000000-0000-0000-0000-000000000005'::uuid
+        '60000000-0000-0000-0000-000000000007'::uuid
       ]
     )
   $$,
   'P0001',
-  'DRAFT_NOT_PENDING',
-  'bulk approval rejects a stale selected draft'
+  'ASSIGNEE_NOT_FARMER',
+  'bulk approval rolls back when a later transition fails'
 );
 
 select is(
   (
     select count(*)
     from public.tasks
-    where source_draft_id = '60000000-0000-0000-0000-000000000003'
+    where source_draft_id in (
+      '60000000-0000-0000-0000-000000000003',
+      '60000000-0000-0000-0000-000000000007'
+    )
   ),
   0::bigint,
-  'stale bulk selection rolls back every task insert'
+  'late bulk failure rolls back every task insert'
+);
+select is(
+  (
+    select count(*)
+    from public.ai_task_drafts
+    where id in (
+      '60000000-0000-0000-0000-000000000003',
+      '60000000-0000-0000-0000-000000000007'
+    )
+      and status = 'pending'
+  ),
+  2::bigint,
+  'late bulk failure leaves every selected draft pending'
 );
 
 select throws_ok(
@@ -1120,6 +1386,70 @@ insert into storage.objects (bucket_id, name, owner, owner_id) values
     '10000000-0000-0000-0000-000000000002',
     '10000000-0000-0000-0000-000000000002'
   );
+
+select set_config(
+  'request.jwt.claims',
+  '{"role":"authenticated"}',
+  true
+);
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+
+select throws_ok(
+  $$
+    select public.register_attendance(
+      '20000000-0000-0000-0000-000000000001',
+      -6.200000,
+      106.816666
+    )
+  $$,
+  'P0001',
+  'FARMER_REQUIRED',
+  'attendance rejects authenticated requests without a subject'
+);
+select throws_ok(
+  $$
+    select public.start_assigned_task(
+      '70000000-0000-0000-0000-000000000002'
+    )
+  $$,
+  'P0001',
+  'FARMER_REQUIRED',
+  'task start rejects authenticated requests without a subject'
+);
+select throws_ok(
+  $$
+    select public.register_task_evidence(
+      '70000000-0000-0000-0000-000000000001',
+      '10000000-0000-0000-0000-000000000002/70000000-0000-0000-0000-000000000001/attempt-1.jpg',
+      'Tidak boleh diterima tanpa sub.',
+      -6.200000,
+      106.816666,
+      null
+    )
+  $$,
+  'P0001',
+  'FARMER_REQUIRED',
+  'evidence registration rejects authenticated requests without a subject'
+);
+select throws_ok(
+  $$
+    select public.register_task_evidence(
+      p_task_id => '70000000-0000-0000-0000-000000000001',
+      p_photo_path => '10000000-0000-0000-0000-000000000002/70000000-0000-0000-0000-000000000001/attempt-1.jpg',
+      p_note => 'Named argument contract.',
+      p_lat => -6.200000,
+      p_lng => 106.816666,
+      p_ai_placeholder_summary => null
+    )
+  $$,
+  'P0001',
+  'FARMER_REQUIRED',
+  'evidence RPC accepts the documented named arguments'
+);
+
+reset role;
 
 select set_config(
   'request.jwt.claims',
