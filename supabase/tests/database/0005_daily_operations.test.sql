@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(152);
+select plan(158);
 
 select has_table('public', 'weather_snapshots', 'weather snapshots exist');
 select has_table('public', 'ai_generation_runs', 'generation runs exist');
@@ -30,6 +30,12 @@ select col_has_check(
   'ai_generation_targets',
   array['status', 'request_payload']::name[],
   'generation request payload shape and successful status are constrained'
+);
+select has_trigger(
+  'public',
+  'ai_generation_targets',
+  'ai_generation_targets_request_payload_immutable',
+  'successful generation request payloads are immutable'
 );
 
 select has_column('public', 'tasks', 'scheduled_for', 'tasks have work date');
@@ -843,6 +849,90 @@ select lives_ok(
     )
   $$,
   'exact retry remains idempotent after the run becomes terminal'
+);
+
+select lives_ok(
+  $$
+    select public.replace_ai_task_drafts(
+      '40000000-0000-0000-0000-000000000002',
+      '20000000-0000-0000-0000-000000000001',
+      (now() at time zone 'Asia/Jakarta')::date,
+      '30000000-0000-0000-0000-000000000001',
+      'test/model',
+      'Dua draft baru',
+      '[
+        {"judul":"Pantau daun","deskripsi":"Amati kondisi daun dan catat perubahan warna.","priority":"medium","requires_location":false,"ai_reason":"Kelembapan cukup tinggi hari ini."},
+        {"judul":"Cek drainase","deskripsi":"Periksa seluruh saluran drainase lahan.","priority":"high","requires_location":true,"ai_reason":"Hujan diperkirakan meningkat."}
+      ]'::jsonb
+    )
+  $$,
+  'canonical retry ignores draft array order'
+);
+select throws_ok(
+  $$
+    select public.replace_ai_task_drafts(
+      '40000000-0000-0000-0000-000000000002',
+      '20000000-0000-0000-0000-000000000001',
+      (now() at time zone 'Asia/Jakarta')::date,
+      '30000000-0000-0000-0000-000000000001',
+      'test/model',
+      'Dua draft baru',
+      '[
+        {"judul":"Cek drainase","deskripsi":"Periksa seluruh saluran drainase lahan.","priority":"high","requires_location":true,"ai_reason":"Hujan diperkirakan meningkat."},
+        {"judul":"Cek drainase","deskripsi":"Periksa seluruh saluran drainase lahan.","priority":"high","requires_location":true,"ai_reason":"Hujan diperkirakan meningkat."}
+      ]'::jsonb
+    )
+  $$,
+  'P0001',
+  'GENERATION_RETRY_MISMATCH',
+  'canonical retry preserves duplicate draft multiplicity'
+);
+select throws_ok(
+  $$
+    select public.replace_ai_task_drafts(
+      '40000000-0000-0000-0000-000000000002',
+      '20000000-0000-0000-0000-000000000001',
+      (now() at time zone 'Asia/Jakarta')::date,
+      '30000000-0000-0000-0000-000000000001',
+      'test/model',
+      'Ringkasan retry telah berubah',
+      '[
+        {"judul":"Cek drainase","deskripsi":"Periksa seluruh saluran drainase lahan.","priority":"high","requires_location":true,"ai_reason":"Hujan diperkirakan meningkat."},
+        {"judul":"Pantau daun","deskripsi":"Amati kondisi daun dan catat perubahan warna.","priority":"medium","requires_location":false,"ai_reason":"Kelembapan cukup tinggi hari ini."}
+      ]'::jsonb
+    )
+  $$,
+  'P0001',
+  'GENERATION_RETRY_MISMATCH',
+  'canonical retry rejects a changed result summary'
+);
+select throws_ok(
+  $$
+    update public.ai_generation_targets
+    set request_payload = pg_catalog.jsonb_set(
+      request_payload,
+      '{model}',
+      '"rewritten/model"'::jsonb
+    )
+    where run_id = '40000000-0000-0000-0000-000000000002'
+      and lahan_id = '20000000-0000-0000-0000-000000000001'
+  $$,
+  'P0001',
+  'GENERATION_REQUEST_PAYLOAD_IMMUTABLE',
+  'successful request payload cannot be rewritten directly'
+);
+select throws_ok(
+  $$
+    update public.ai_generation_targets
+    set status = 'failed',
+        request_payload = null,
+        error_code = 'REWRITTEN'
+    where run_id = '40000000-0000-0000-0000-000000000002'
+      and lahan_id = '20000000-0000-0000-0000-000000000001'
+  $$,
+  'P0001',
+  'GENERATION_REQUEST_PAYLOAD_IMMUTABLE',
+  'successful request payload cannot be cleared through a status rewrite'
 );
 
 reset role;

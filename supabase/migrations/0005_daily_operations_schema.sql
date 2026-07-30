@@ -82,6 +82,44 @@ create table public.ai_generation_targets (
   unique (lahan_id, scheduled_for, version)
 );
 
+create or replace function
+  public.protect_ai_generation_target_request_payload()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if old.request_payload is null and new.request_payload is not null then
+    if old.status <> 'running' or new.status <> 'succeeded' then
+      raise exception 'GENERATION_REQUEST_PAYLOAD_TRANSITION_INVALID';
+    end if;
+
+    return new;
+  end if;
+
+  if old.request_payload is not null
+    and (
+      new.request_payload is distinct from old.request_payload
+      or new.status is distinct from old.status
+    )
+  then
+    raise exception 'GENERATION_REQUEST_PAYLOAD_IMMUTABLE';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function
+  public.protect_ai_generation_target_request_payload()
+from public, anon, authenticated;
+
+create trigger ai_generation_targets_request_payload_immutable
+before update of status, request_payload
+on public.ai_generation_targets
+for each row
+execute function public.protect_ai_generation_target_request_payload();
+
 create unique index ai_generation_targets_one_current_idx
   on public.ai_generation_targets(lahan_id, scheduled_for)
   where is_current;
