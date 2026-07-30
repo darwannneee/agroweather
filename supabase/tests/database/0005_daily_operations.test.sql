@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(32);
+select plan(128);
 
 select has_table('public', 'weather_snapshots', 'weather snapshots exist');
 select has_table('public', 'ai_generation_runs', 'generation runs exist');
@@ -87,6 +87,1555 @@ select col_has_check('public', 'ai_task_drafts', 'priority', 'draft priority is 
 select col_has_check('public', 'task_evidence', 'review_status', 'review status is constrained');
 select col_has_check('public', 'tasks', 'priority', 'task priority is constrained');
 select col_has_check('public', 'tasks', 'source', 'task source is constrained');
+
+select has_function(
+  'public',
+  'current_user_role',
+  array[]::text[],
+  'current user role helper exists'
+);
+select has_function(
+  'public',
+  'is_internal',
+  array[]::text[],
+  'internal-role helper exists'
+);
+select has_function(
+  'public',
+  'replace_ai_task_drafts',
+  array['uuid', 'uuid', 'date', 'uuid', 'text', 'text', 'jsonb'],
+  'replace draft RPC exists'
+);
+select has_function(
+  'public',
+  'record_ai_generation_target',
+  array['uuid', 'uuid', 'date', 'text', 'text', 'text', 'uuid'],
+  'record skipped or failed generation target RPC exists'
+);
+select has_function(
+  'public',
+  'approve_ai_task_draft',
+  array['uuid', 'uuid', 'text', 'text', 'text', 'boolean'],
+  'approve draft RPC exists'
+);
+select has_function(
+  'public',
+  'bulk_approve_ai_task_drafts',
+  array['uuid[]'],
+  'bulk approve draft RPC exists'
+);
+select has_function(
+  'public',
+  'reject_ai_task_draft',
+  array['uuid', 'text'],
+  'reject draft RPC exists'
+);
+select has_function(
+  'public',
+  'start_assigned_task',
+  array['uuid'],
+  'start task RPC exists'
+);
+select has_function(
+  'public',
+  'register_attendance',
+  array['uuid', 'numeric', 'numeric'],
+  'server-validated attendance RPC exists'
+);
+select has_function(
+  'public',
+  'register_task_evidence',
+  array['uuid', 'text', 'text', 'numeric', 'numeric', 'text'],
+  'register evidence RPC exists'
+);
+select has_function(
+  'public',
+  'review_task_evidence',
+  array['uuid', 'text', 'text'],
+  'review evidence RPC exists'
+);
+
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'public.current_user_role()',
+    'EXECUTE'
+  ),
+  'authenticated can resolve its operational role'
+);
+select ok(
+  not has_function_privilege('anon', 'public.current_user_role()', 'EXECUTE'),
+  'anon cannot resolve an operational role'
+);
+select ok(
+  has_function_privilege('authenticated', 'public.is_internal()', 'EXECUTE'),
+  'authenticated can use the internal-role helper'
+);
+select ok(
+  not has_function_privilege('anon', 'public.is_internal()', 'EXECUTE'),
+  'anon cannot use the internal-role helper'
+);
+select ok(
+  has_function_privilege(
+    'service_role',
+    'public.replace_ai_task_drafts(uuid,uuid,date,uuid,text,text,jsonb)',
+    'EXECUTE'
+  ),
+  'service role can replace AI drafts'
+);
+select ok(
+  not exists (
+    select 1
+    from pg_catalog.pg_proc function_definition
+    join pg_catalog.pg_namespace namespace
+      on namespace.oid = function_definition.pronamespace
+    cross join lateral pg_catalog.aclexplode(
+      coalesce(
+        function_definition.proacl,
+        pg_catalog.acldefault('f', function_definition.proowner)
+      )
+    ) privilege
+    where namespace.nspname = 'public'
+      and function_definition.oid =
+        'public.replace_ai_task_drafts(uuid,uuid,date,uuid,text,text,jsonb)'
+          ::regprocedure
+      and privilege.grantee = 0
+      and privilege.privilege_type = 'EXECUTE'
+  ),
+  'PUBLIC cannot replace AI drafts'
+);
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'public.replace_ai_task_drafts(uuid,uuid,date,uuid,text,text,jsonb)',
+    'EXECUTE'
+  ),
+  'authenticated cannot replace AI drafts'
+);
+select ok(
+  not has_function_privilege(
+    'anon',
+    'public.replace_ai_task_drafts(uuid,uuid,date,uuid,text,text,jsonb)',
+    'EXECUTE'
+  ),
+  'anon cannot replace AI drafts'
+);
+select ok(
+  has_function_privilege(
+    'service_role',
+    'public.record_ai_generation_target(uuid,uuid,date,text,text,text,uuid)',
+    'EXECUTE'
+  ),
+  'service role can record generation failures'
+);
+select ok(
+  not exists (
+    select 1
+    from pg_catalog.pg_proc function_definition
+    join pg_catalog.pg_namespace namespace
+      on namespace.oid = function_definition.pronamespace
+    cross join lateral pg_catalog.aclexplode(
+      coalesce(
+        function_definition.proacl,
+        pg_catalog.acldefault('f', function_definition.proowner)
+      )
+    ) privilege
+    where namespace.nspname = 'public'
+      and function_definition.oid =
+        'public.record_ai_generation_target(uuid,uuid,date,text,text,text,uuid)'
+          ::regprocedure
+      and privilege.grantee = 0
+      and privilege.privilege_type = 'EXECUTE'
+  ),
+  'PUBLIC cannot record generation failures'
+);
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'public.record_ai_generation_target(uuid,uuid,date,text,text,text,uuid)',
+    'EXECUTE'
+  ),
+  'authenticated cannot record generation failures'
+);
+select ok(
+  not has_function_privilege(
+    'anon',
+    'public.record_ai_generation_target(uuid,uuid,date,text,text,text,uuid)',
+    'EXECUTE'
+  ),
+  'anon cannot record generation failures'
+);
+
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'public.approve_ai_task_draft(uuid,uuid,text,text,text,boolean)',
+    'EXECUTE'
+  ),
+  'authenticated can invoke approve with server authorization'
+);
+select ok(
+  not has_function_privilege(
+    'anon',
+    'public.approve_ai_task_draft(uuid,uuid,text,text,text,boolean)',
+    'EXECUTE'
+  ),
+  'anon cannot invoke approve'
+);
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'public.bulk_approve_ai_task_drafts(uuid[])',
+    'EXECUTE'
+  ),
+  'authenticated can invoke bulk approval with server authorization'
+);
+select ok(
+  not has_function_privilege(
+    'anon',
+    'public.bulk_approve_ai_task_drafts(uuid[])',
+    'EXECUTE'
+  ),
+  'anon cannot invoke bulk approval'
+);
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'public.reject_ai_task_draft(uuid,text)',
+    'EXECUTE'
+  ),
+  'authenticated can invoke rejection with server authorization'
+);
+select ok(
+  not has_function_privilege(
+    'anon',
+    'public.reject_ai_task_draft(uuid,text)',
+    'EXECUTE'
+  ),
+  'anon cannot invoke rejection'
+);
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'public.start_assigned_task(uuid)',
+    'EXECUTE'
+  ),
+  'authenticated can invoke task start with server authorization'
+);
+select ok(
+  not has_function_privilege(
+    'anon',
+    'public.start_assigned_task(uuid)',
+    'EXECUTE'
+  ),
+  'anon cannot invoke task start'
+);
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'public.register_attendance(uuid,numeric,numeric)',
+    'EXECUTE'
+  ),
+  'authenticated can invoke attendance with server authorization'
+);
+select ok(
+  not has_function_privilege(
+    'anon',
+    'public.register_attendance(uuid,numeric,numeric)',
+    'EXECUTE'
+  ),
+  'anon cannot invoke attendance'
+);
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'public.register_task_evidence(uuid,text,text,numeric,numeric,text)',
+    'EXECUTE'
+  ),
+  'authenticated can invoke evidence registration with server authorization'
+);
+select ok(
+  not has_function_privilege(
+    'anon',
+    'public.register_task_evidence(uuid,text,text,numeric,numeric,text)',
+    'EXECUTE'
+  ),
+  'anon cannot invoke evidence registration'
+);
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'public.review_task_evidence(uuid,text,text)',
+    'EXECUTE'
+  ),
+  'authenticated can invoke evidence review with server authorization'
+);
+select ok(
+  not has_function_privilege(
+    'anon',
+    'public.review_task_evidence(uuid,text,text)',
+    'EXECUTE'
+  ),
+  'anon cannot invoke evidence review'
+);
+
+insert into auth.users (
+  id,
+  aud,
+  role,
+  email,
+  encrypted_password,
+  email_confirmed_at,
+  created_at,
+  updated_at
+) values
+  (
+    '10000000-0000-0000-0000-000000000001',
+    'authenticated',
+    'authenticated',
+    'task3-internal@example.test',
+    'not-used',
+    now(),
+    now(),
+    now()
+  ),
+  (
+    '10000000-0000-0000-0000-000000000002',
+    'authenticated',
+    'authenticated',
+    'task3-farmer-a@example.test',
+    'not-used',
+    now(),
+    now(),
+    now()
+  ),
+  (
+    '10000000-0000-0000-0000-000000000003',
+    'authenticated',
+    'authenticated',
+    'task3-farmer-b@example.test',
+    'not-used',
+    now(),
+    now(),
+    now()
+  );
+
+insert into public.users (id, nama, email, role) values
+  (
+    '10000000-0000-0000-0000-000000000001',
+    'Internal Task 3',
+    'task3-internal@example.test',
+    'internal'
+  ),
+  (
+    '10000000-0000-0000-0000-000000000002',
+    'Farmer A Task 3',
+    'task3-farmer-a@example.test',
+    'farmer'
+  ),
+  (
+    '10000000-0000-0000-0000-000000000003',
+    'Farmer B Task 3',
+    'task3-farmer-b@example.test',
+    'farmer'
+  );
+
+insert into public.lahan (
+  id,
+  nama_lahan,
+  farmer_id,
+  jenis_tanaman,
+  lat_center,
+  lng_center,
+  radius_geofence_m,
+  status
+) values
+  (
+    '20000000-0000-0000-0000-000000000001',
+    'Plot A Task 3',
+    '10000000-0000-0000-0000-000000000002',
+    'Padi',
+    -6.200000,
+    106.816666,
+    200,
+    'aktif'
+  ),
+  (
+    '20000000-0000-0000-0000-000000000002',
+    'Plot B Task 3',
+    '10000000-0000-0000-0000-000000000003',
+    'Jagung',
+    -6.210000,
+    106.826666,
+    200,
+    'aktif'
+  ),
+  (
+    '20000000-0000-0000-0000-000000000003',
+    'Inactive Plot Task 3',
+    '10000000-0000-0000-0000-000000000002',
+    'Cabai',
+    -6.220000,
+    106.836666,
+    200,
+    'nonaktif'
+  );
+
+insert into public.weather_snapshots (
+  id,
+  lahan_id,
+  observed_at,
+  expires_at,
+  current_data,
+  forecast_data
+) values
+  (
+    '30000000-0000-0000-0000-000000000001',
+    '20000000-0000-0000-0000-000000000001',
+    now(),
+    now() + interval '6 hours',
+    '{"temp": 29}'::jsonb,
+    '[]'::jsonb
+  ),
+  (
+    '30000000-0000-0000-0000-000000000002',
+    '20000000-0000-0000-0000-000000000002',
+    now(),
+    now() + interval '6 hours',
+    '{"temp": 28}'::jsonb,
+    '[]'::jsonb
+  );
+
+insert into public.ai_generation_runs (
+  id,
+  trigger,
+  scheduled_for,
+  status,
+  model,
+  plot_count
+) values
+  (
+    '40000000-0000-0000-0000-000000000001',
+    'cron',
+    (now() at time zone 'Asia/Jakarta')::date,
+    'running',
+    'test/model',
+    1
+  ),
+  (
+    '40000000-0000-0000-0000-000000000002',
+    'manual',
+    (now() at time zone 'Asia/Jakarta')::date,
+    'running',
+    'test/model',
+    1
+  ),
+  (
+    '40000000-0000-0000-0000-000000000003',
+    'manual',
+    (now() at time zone 'Asia/Jakarta')::date,
+    'running',
+    'test/model',
+    1
+  );
+
+insert into public.ai_generation_targets (
+  id,
+  run_id,
+  lahan_id,
+  scheduled_for,
+  version,
+  status,
+  draft_count,
+  weather_snapshot_id
+) values (
+  '50000000-0000-0000-0000-000000000001',
+  '40000000-0000-0000-0000-000000000001',
+  '20000000-0000-0000-0000-000000000001',
+  (now() at time zone 'Asia/Jakarta')::date,
+  1,
+  'succeeded',
+  1,
+  '30000000-0000-0000-0000-000000000001'
+);
+
+insert into public.ai_task_drafts (
+  id,
+  generation_target_id,
+  lahan_id,
+  proposed_assignee_id,
+  scheduled_for,
+  judul,
+  deskripsi,
+  priority,
+  requires_location,
+  ai_reason,
+  model,
+  weather_snapshot_id
+) values (
+  '60000000-0000-0000-0000-000000000001',
+  '50000000-0000-0000-0000-000000000001',
+  '20000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000002',
+  (now() at time zone 'Asia/Jakarta')::date,
+  'Draft lama',
+  'Draft lama yang harus digantikan.',
+  'medium',
+  true,
+  'Digantikan oleh hasil generasi terbaru.',
+  'test/model',
+  '30000000-0000-0000-0000-000000000001'
+);
+
+set local role service_role;
+
+select throws_ok(
+  $$
+    select public.replace_ai_task_drafts(
+      '40000000-0000-0000-0000-000000000002',
+      '20000000-0000-0000-0000-000000000001',
+      (now() at time zone 'Asia/Jakarta')::date,
+      '30000000-0000-0000-0000-000000000001',
+      'test/model',
+      'Terlalu banyak draft',
+      '[
+        {"judul":"Tugas 1","deskripsi":"Deskripsi tugas pertama.","priority":"low","requires_location":true,"ai_reason":"Alasan tugas pertama."},
+        {"judul":"Tugas 2","deskripsi":"Deskripsi tugas kedua.","priority":"low","requires_location":true,"ai_reason":"Alasan tugas kedua."},
+        {"judul":"Tugas 3","deskripsi":"Deskripsi tugas ketiga.","priority":"medium","requires_location":true,"ai_reason":"Alasan tugas ketiga."},
+        {"judul":"Tugas 4","deskripsi":"Deskripsi tugas keempat.","priority":"medium","requires_location":false,"ai_reason":"Alasan tugas keempat."},
+        {"judul":"Tugas 5","deskripsi":"Deskripsi tugas kelima.","priority":"high","requires_location":true,"ai_reason":"Alasan tugas kelima."},
+        {"judul":"Tugas 6","deskripsi":"Deskripsi tugas keenam.","priority":"high","requires_location":true,"ai_reason":"Alasan tugas keenam."}
+      ]'::jsonb
+    )
+  $$,
+  'P0001',
+  'AI_DRAFT_LIMIT',
+  'generation rejects more than five drafts'
+);
+
+select lives_ok(
+  $$
+    select public.replace_ai_task_drafts(
+      '40000000-0000-0000-0000-000000000002',
+      '20000000-0000-0000-0000-000000000001',
+      (now() at time zone 'Asia/Jakarta')::date,
+      '30000000-0000-0000-0000-000000000001',
+      'test/model',
+      'Dua draft baru',
+      '[
+        {"judul":"Cek drainase","deskripsi":"Periksa seluruh saluran drainase lahan.","priority":"high","requires_location":true,"ai_reason":"Hujan diperkirakan meningkat."},
+        {"judul":"Pantau daun","deskripsi":"Amati kondisi daun dan catat perubahan warna.","priority":"medium","requires_location":false,"ai_reason":"Kelembapan cukup tinggi hari ini."}
+      ]'::jsonb
+    )
+  $$,
+  'service role can atomically replace current drafts'
+);
+
+select lives_ok(
+  $$
+    select public.replace_ai_task_drafts(
+      '40000000-0000-0000-0000-000000000002',
+      '20000000-0000-0000-0000-000000000001',
+      (now() at time zone 'Asia/Jakarta')::date,
+      '30000000-0000-0000-0000-000000000001',
+      'test/model',
+      'Dua draft baru',
+      '[
+        {"judul":"Cek drainase","deskripsi":"Periksa seluruh saluran drainase lahan.","priority":"high","requires_location":true,"ai_reason":"Hujan diperkirakan meningkat."},
+        {"judul":"Pantau daun","deskripsi":"Amati kondisi daun dan catat perubahan warna.","priority":"medium","requires_location":false,"ai_reason":"Kelembapan cukup tinggi hari ini."}
+      ]'::jsonb
+    )
+  $$,
+  'a retry for the same run and plot is idempotent'
+);
+
+reset role;
+
+select is(
+  (
+    select status
+    from public.ai_task_drafts
+    where id = '60000000-0000-0000-0000-000000000001'
+  ),
+  'superseded',
+  'replacement supersedes only the prior pending draft'
+);
+select is(
+  (
+    select version
+    from public.ai_generation_targets
+    where lahan_id = '20000000-0000-0000-0000-000000000001'
+      and is_current
+  ),
+  2,
+  'replacement creates the next current target version'
+);
+select is(
+  (
+    select draft_count
+    from public.ai_generation_targets
+    where lahan_id = '20000000-0000-0000-0000-000000000001'
+      and is_current
+  ),
+  2,
+  'replacement records the exact draft count'
+);
+select is(
+  (
+    select count(distinct proposed_assignee_id)
+    from public.ai_task_drafts
+    where generation_target_id = (
+      select id
+      from public.ai_generation_targets
+      where lahan_id = '20000000-0000-0000-0000-000000000001'
+        and is_current
+    )
+  ),
+  1::bigint,
+  'replacement derives one assignee from the active plot'
+);
+select is(
+  (
+    select proposed_assignee_id
+    from public.ai_task_drafts
+    where generation_target_id = (
+      select id
+      from public.ai_generation_targets
+      where lahan_id = '20000000-0000-0000-0000-000000000001'
+        and is_current
+    )
+    order by id
+    limit 1
+  ),
+  '10000000-0000-0000-0000-000000000002'::uuid,
+  'replacement uses the plot farmer as proposed assignee'
+);
+
+set local role service_role;
+
+select throws_ok(
+  $$
+    select public.record_ai_generation_target(
+      '40000000-0000-0000-0000-000000000003',
+      '20000000-0000-0000-0000-000000000002',
+      (now() at time zone 'Asia/Jakarta')::date,
+      'succeeded',
+      null,
+      'Status tidak valid untuk helper ini',
+      '30000000-0000-0000-0000-000000000002'
+    )
+  $$,
+  'P0001',
+  'GENERATION_TARGET_STATUS_INVALID',
+  'failure recorder only accepts skipped or failed'
+);
+
+select lives_ok(
+  $$
+    select public.record_ai_generation_target(
+      '40000000-0000-0000-0000-000000000003',
+      '20000000-0000-0000-0000-000000000002',
+      (now() at time zone 'Asia/Jakarta')::date,
+      'failed',
+      'OPENROUTER_TIMEOUT',
+      'Provider tidak merespons tepat waktu.',
+      '30000000-0000-0000-0000-000000000002'
+    )
+  $$,
+  'service role records a failed generation target'
+);
+
+reset role;
+
+select is(
+  (
+    select status
+    from public.ai_generation_targets
+    where run_id = '40000000-0000-0000-0000-000000000003'
+      and lahan_id = '20000000-0000-0000-0000-000000000002'
+  ),
+  'failed',
+  'failure recorder persists the requested terminal status'
+);
+
+insert into public.ai_task_drafts (
+  id,
+  generation_target_id,
+  lahan_id,
+  proposed_assignee_id,
+  scheduled_for,
+  judul,
+  deskripsi,
+  priority,
+  requires_location,
+  ai_reason,
+  model,
+  weather_snapshot_id
+) values
+  (
+    '60000000-0000-0000-0000-000000000002',
+    (
+      select id
+      from public.ai_generation_targets
+      where lahan_id = '20000000-0000-0000-0000-000000000001'
+        and is_current
+    ),
+    '20000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000002',
+    (now() at time zone 'Asia/Jakarta')::date,
+    'Setujui draft tunggal',
+    'Draft ini dipakai untuk menguji persetujuan tunggal.',
+    'high',
+    true,
+    'Kondisi cuaca membutuhkan pemeriksaan langsung.',
+    'test/model',
+    '30000000-0000-0000-0000-000000000001'
+  ),
+  (
+    '60000000-0000-0000-0000-000000000003',
+    (
+      select id
+      from public.ai_generation_targets
+      where lahan_id = '20000000-0000-0000-0000-000000000001'
+        and is_current
+    ),
+    '20000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000002',
+    (now() at time zone 'Asia/Jakarta')::date,
+    'Setujui bulk pertama',
+    'Draft pertama untuk menguji persetujuan secara bulk.',
+    'medium',
+    true,
+    'Pekerjaan perlu dilakukan pada hari yang sama.',
+    'test/model',
+    '30000000-0000-0000-0000-000000000001'
+  ),
+  (
+    '60000000-0000-0000-0000-000000000004',
+    (
+      select id
+      from public.ai_generation_targets
+      where lahan_id = '20000000-0000-0000-0000-000000000001'
+        and is_current
+    ),
+    '20000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000002',
+    (now() at time zone 'Asia/Jakarta')::date,
+    'Setujui bulk kedua',
+    'Draft kedua untuk menguji persetujuan secara bulk.',
+    'low',
+    false,
+    'Pencatatan visual dapat dilakukan tanpa lokasi.',
+    'test/model',
+    '30000000-0000-0000-0000-000000000001'
+  ),
+  (
+    '60000000-0000-0000-0000-000000000005',
+    (
+      select id
+      from public.ai_generation_targets
+      where lahan_id = '20000000-0000-0000-0000-000000000001'
+        and is_current
+    ),
+    '20000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000002',
+    (now() at time zone 'Asia/Jakarta')::date,
+    'Draft stale',
+    'Draft stale untuk memastikan seluruh operasi bulk dibatalkan.',
+    'medium',
+    true,
+    'Draft ini sudah ditolak sebelum bulk dijalankan.',
+    'test/model',
+    '30000000-0000-0000-0000-000000000001'
+  ),
+  (
+    '60000000-0000-0000-0000-000000000006',
+    (
+      select id
+      from public.ai_generation_targets
+      where lahan_id = '20000000-0000-0000-0000-000000000001'
+        and is_current
+    ),
+    '20000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000002',
+    (now() at time zone 'Asia/Jakarta')::date,
+    'Draft untuk ditolak',
+    'Draft ini digunakan untuk menguji alasan penolakan.',
+    'low',
+    false,
+    'Rekomendasi tidak lagi sesuai kondisi operasional.',
+    'test/model',
+    '30000000-0000-0000-0000-000000000001'
+  );
+
+update public.ai_task_drafts
+set status = 'rejected',
+    rejection_reason = 'Sudah tidak relevan'
+where id = '60000000-0000-0000-0000-000000000005';
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"10000000-0000-0000-0000-000000000002","role":"authenticated"}',
+  true
+);
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-0000-0000-000000000002',
+  true
+);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+
+select throws_ok(
+  $$
+    select public.approve_ai_task_draft(
+      '60000000-0000-0000-0000-000000000002',
+      '10000000-0000-0000-0000-000000000002',
+      'Setujui draft tunggal',
+      'Draft ini dipakai untuk menguji persetujuan tunggal.',
+      'high',
+      true
+    )
+  $$,
+  'P0001',
+  'INTERNAL_REQUIRED',
+  'farmer cannot approve an AI draft'
+);
+
+reset role;
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"10000000-0000-0000-0000-000000000001","role":"authenticated"}',
+  true
+);
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-0000-0000-000000000001',
+  true
+);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+
+select lives_ok(
+  $$
+    select public.approve_ai_task_draft(
+      '60000000-0000-0000-0000-000000000002',
+      '10000000-0000-0000-0000-000000000002',
+      'Setujui draft tunggal',
+      'Draft ini dipakai untuk menguji persetujuan tunggal.',
+      'high',
+      true
+    )
+  $$,
+  'internal user can approve one pending draft'
+);
+
+select is(
+  (
+    select count(*)
+    from public.tasks
+    where source_draft_id = '60000000-0000-0000-0000-000000000002'
+      and source = 'ai'
+      and assigned_by = '10000000-0000-0000-0000-000000000001'
+  ),
+  1::bigint,
+  'single approval creates and links exactly one AI task'
+);
+
+select throws_ok(
+  $$
+    select public.approve_ai_task_draft(
+      '60000000-0000-0000-0000-000000000002',
+      '10000000-0000-0000-0000-000000000002',
+      'Setujui draft tunggal',
+      'Draft ini dipakai untuk menguji persetujuan tunggal.',
+      'high',
+      true
+    )
+  $$,
+  'P0001',
+  'DRAFT_NOT_PENDING',
+  'single approval rejects a double submit'
+);
+
+select throws_ok(
+  $$
+    select public.bulk_approve_ai_task_drafts(
+      array[
+        '60000000-0000-0000-0000-000000000003'::uuid,
+        '60000000-0000-0000-0000-000000000005'::uuid
+      ]
+    )
+  $$,
+  'P0001',
+  'DRAFT_NOT_PENDING',
+  'bulk approval rejects a stale selected draft'
+);
+
+select is(
+  (
+    select count(*)
+    from public.tasks
+    where source_draft_id = '60000000-0000-0000-0000-000000000003'
+  ),
+  0::bigint,
+  'stale bulk selection rolls back every task insert'
+);
+
+select throws_ok(
+  $$
+    select public.bulk_approve_ai_task_drafts(
+      array[
+        '60000000-0000-0000-0000-000000000003'::uuid,
+        '60000000-0000-0000-0000-000000000003'::uuid
+      ]
+    )
+  $$,
+  'P0001',
+  'DRAFT_SELECTION_DUPLICATE',
+  'bulk approval rejects duplicate IDs before writing'
+);
+
+create temporary table task3_bulk_result (
+  task_ids uuid[] not null
+) on commit drop;
+
+insert into task3_bulk_result (task_ids)
+select public.bulk_approve_ai_task_drafts(
+    array[
+      '60000000-0000-0000-0000-000000000004'::uuid,
+      '60000000-0000-0000-0000-000000000003'::uuid
+    ]
+  );
+
+select is(
+  (select task_ids from task3_bulk_result),
+  array[
+    (
+      select created_task_id
+      from public.ai_task_drafts
+      where id = '60000000-0000-0000-0000-000000000004'
+    ),
+    (
+      select created_task_id
+      from public.ai_task_drafts
+      where id = '60000000-0000-0000-0000-000000000003'
+    )
+  ],
+  'bulk approval returns task IDs in selected input order'
+);
+
+select is(
+  (
+    select count(*)
+    from public.tasks
+    where source_draft_id in (
+      '60000000-0000-0000-0000-000000000003',
+      '60000000-0000-0000-0000-000000000004'
+    )
+  ),
+  2::bigint,
+  'bulk approval creates exactly one task per pending draft'
+);
+
+select throws_ok(
+  $$
+    select public.reject_ai_task_draft(
+      '60000000-0000-0000-0000-000000000006',
+      'x'
+    )
+  $$,
+  'P0001',
+  'REJECTION_REASON_INVALID',
+  'draft rejection requires a bounded reason'
+);
+
+select lives_ok(
+  $$
+    select public.reject_ai_task_draft(
+      '60000000-0000-0000-0000-000000000006',
+      'Tidak sesuai kondisi terbaru.'
+    )
+  $$,
+  'internal user can reject one pending draft'
+);
+
+select is(
+  (
+    select status
+    from public.ai_task_drafts
+    where id = '60000000-0000-0000-0000-000000000006'
+  ),
+  'rejected',
+  'draft rejection persists the terminal status'
+);
+
+reset role;
+
+insert into public.tasks (
+  id,
+  lahan_id,
+  assigned_to,
+  assigned_by,
+  judul,
+  deskripsi,
+  status,
+  scheduled_for,
+  requires_location
+) values
+  (
+    '70000000-0000-0000-0000-000000000001',
+    '20000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000001',
+    'Task bukti lokasi',
+    'Task untuk menguji alur bukti dengan lokasi.',
+    'belum_dikerjakan',
+    (now() at time zone 'Asia/Jakarta')::date,
+    true
+  ),
+  (
+    '70000000-0000-0000-0000-000000000002',
+    '20000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000001',
+    'Task tanpa lokasi',
+    'Task untuk menguji transisi mulai.',
+    'belum_dikerjakan',
+    (now() at time zone 'Asia/Jakarta')::date,
+    false
+  );
+
+insert into storage.objects (bucket_id, name, owner, owner_id) values
+  (
+    'task-evidence',
+    '10000000-0000-0000-0000-000000000002/70000000-0000-0000-0000-000000000001/attempt-1.jpg',
+    '10000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000002'
+  ),
+  (
+    'task-evidence',
+    '10000000-0000-0000-0000-000000000002/70000000-0000-0000-0000-000000000001/attempt-2.png',
+    '10000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000002'
+  );
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"10000000-0000-0000-0000-000000000003","role":"authenticated"}',
+  true
+);
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-0000-0000-000000000003',
+  true
+);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+
+select throws_ok(
+  $$
+    select public.start_assigned_task(
+      '70000000-0000-0000-0000-000000000002'
+    )
+  $$,
+  'P0001',
+  'TASK_NOT_ASSIGNED',
+  'farmer cannot start another farmer task'
+);
+
+reset role;
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"10000000-0000-0000-0000-000000000002","role":"authenticated"}',
+  true
+);
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-0000-0000-000000000002',
+  true
+);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+
+select is(
+  (public.start_assigned_task(
+    '70000000-0000-0000-0000-000000000002'
+  )).status,
+  'sedang_dikerjakan'::public.task_status,
+  'assigned farmer can start its task'
+);
+select ok(
+  (
+    select unlocked_at is not null
+    from public.tasks
+    where id = '70000000-0000-0000-0000-000000000002'
+  ),
+  'starting a task records its first unlock time'
+);
+
+select lives_ok(
+  $$
+    select public.register_attendance(
+      '20000000-0000-0000-0000-000000000001',
+      -6.200000,
+      106.816666
+    )
+  $$,
+  'owned farmer can register attendance inside the geofence'
+);
+
+select is(
+  (
+    select farmer_id
+    from public.absensi
+    where lahan_id = '20000000-0000-0000-0000-000000000001'
+      and attendance_date = (now() at time zone 'Asia/Jakarta')::date
+  ),
+  '10000000-0000-0000-0000-000000000002'::uuid,
+  'attendance derives farmer from auth.uid'
+);
+select is(
+  (
+    select attendance_date
+    from public.absensi
+    where lahan_id = '20000000-0000-0000-0000-000000000001'
+      and farmer_id = '10000000-0000-0000-0000-000000000002'
+  ),
+  (statement_timestamp() at time zone 'Asia/Jakarta')::date,
+  'attendance derives its Jakarta date server-side'
+);
+select ok(
+  (
+    select waktu_masuk between transaction_timestamp() and statement_timestamp()
+    from public.absensi
+    where lahan_id = '20000000-0000-0000-0000-000000000001'
+      and farmer_id = '10000000-0000-0000-0000-000000000002'
+  ),
+  'attendance derives its timestamp server-side'
+);
+select ok(
+  (
+    select distance_m between 0 and 0.01
+    from public.absensi
+    where lahan_id = '20000000-0000-0000-0000-000000000001'
+      and farmer_id = '10000000-0000-0000-0000-000000000002'
+  ),
+  'attendance stores its computed distance'
+);
+select is(
+  (
+    select status_geofence
+    from public.absensi
+    where lahan_id = '20000000-0000-0000-0000-000000000001'
+      and farmer_id = '10000000-0000-0000-0000-000000000002'
+  ),
+  'valid'::public.geofence_status,
+  'attendance status is server-validated'
+);
+select is(
+  (
+    public.register_attendance(
+      '20000000-0000-0000-0000-000000000001',
+      -6.200000,
+      106.816666
+    )
+  ).id,
+  (
+    select id
+    from public.absensi
+    where lahan_id = '20000000-0000-0000-0000-000000000001'
+      and farmer_id = '10000000-0000-0000-0000-000000000002'
+  ),
+  'same-day attendance retry returns the existing row'
+);
+select throws_ok(
+  $$
+    select public.register_attendance(
+      '20000000-0000-0000-0000-000000000002',
+      -6.210000,
+      106.826666
+    )
+  $$,
+  'P0001',
+  'PLOT_NOT_ASSIGNED',
+  'attendance rejects a plot owned by another farmer'
+);
+select throws_ok(
+  $$
+    select public.register_attendance(
+      '20000000-0000-0000-0000-000000000003',
+      -6.220000,
+      106.836666
+    )
+  $$,
+  'P0001',
+  'PLOT_INACTIVE',
+  'attendance rejects an inactive assigned plot'
+);
+select throws_ok(
+  $$
+    select public.register_attendance(
+      '20000000-0000-0000-0000-000000000001',
+      -6.300000,
+      106.916666
+    )
+  $$,
+  'P0001',
+  'OUTSIDE_GEOFENCE',
+  'attendance rejects coordinates outside the plot radius'
+);
+select throws_ok(
+  $$
+    select public.register_attendance(
+      '20000000-0000-0000-0000-000000000001',
+      'NaN'::numeric,
+      106.816666
+    )
+  $$,
+  'P0001',
+  'COORDINATES_INVALID',
+  'attendance rejects non-finite coordinates'
+);
+
+select throws_ok(
+  $$
+    select public.register_task_evidence(
+      '70000000-0000-0000-0000-000000000001',
+      '10000000-0000-0000-0000-000000000002/70000000-0000-0000-0000-000000000001/attempt-1.jpg',
+      'Lokasi tidak disertakan.',
+      null,
+      null,
+      null
+    )
+  $$,
+  'P0001',
+  'EVIDENCE_LOCATION_REQUIRED',
+  'location-required evidence rejects missing coordinates'
+);
+select throws_ok(
+  $$
+    select public.register_task_evidence(
+      '70000000-0000-0000-0000-000000000001',
+      '10000000-0000-0000-0000-000000000002/70000000-0000-0000-0000-000000000001/attempt-1.jpg',
+      'Lokasi terlalu jauh.',
+      -6.300000,
+      106.916666,
+      null
+    )
+  $$,
+  'P0001',
+  'EVIDENCE_OUTSIDE_GEOFENCE',
+  'location-required evidence rejects outside coordinates'
+);
+select throws_ok(
+  $$
+    select public.register_task_evidence(
+      '70000000-0000-0000-0000-000000000001',
+      '10000000-0000-0000-0000-000000000002/70000000-0000-0000-0000-000000000001/../attempt-1.jpg',
+      'Path mencoba keluar folder.',
+      -6.200000,
+      106.816666,
+      null
+    )
+  $$,
+  'P0001',
+  'EVIDENCE_PHOTO_PATH_INVALID',
+  'evidence rejects traversal and extra path segments'
+);
+select lives_ok(
+  $$
+    select public.register_task_evidence(
+      '70000000-0000-0000-0000-000000000001',
+      '10000000-0000-0000-0000-000000000002/70000000-0000-0000-0000-000000000001/attempt-1.jpg',
+      'Drainase sudah diperiksa.',
+      -6.200000,
+      106.816666,
+      'Tidak ada sumbatan terlihat.'
+    )
+  $$,
+  'assigned farmer can register valid evidence'
+);
+select is(
+  (
+    select farmer_id
+    from public.task_evidence
+    where task_id = '70000000-0000-0000-0000-000000000001'
+      and attempt_number = 1
+  ),
+  '10000000-0000-0000-0000-000000000002'::uuid,
+  'evidence derives farmer from the assigned task'
+);
+select is(
+  (
+    select lahan_id
+    from public.task_evidence
+    where task_id = '70000000-0000-0000-0000-000000000001'
+      and attempt_number = 1
+  ),
+  '20000000-0000-0000-0000-000000000001'::uuid,
+  'evidence derives plot from the assigned task'
+);
+select is(
+  (
+    select attempt_number
+    from public.task_evidence
+    where task_id = '70000000-0000-0000-0000-000000000001'
+  ),
+  1,
+  'first evidence registration derives attempt number one'
+);
+select is(
+  (
+    select review_status
+    from public.task_evidence
+    where task_id = '70000000-0000-0000-0000-000000000001'
+  ),
+  'pending',
+  'new evidence waits for internal review'
+);
+select is(
+  (
+    select status
+    from public.tasks
+    where id = '70000000-0000-0000-0000-000000000001'
+  ),
+  'sedang_dikerjakan'::public.task_status,
+  'submitting evidence keeps the task in progress'
+);
+select throws_ok(
+  $$
+    select public.register_task_evidence(
+      '70000000-0000-0000-0000-000000000001',
+      '10000000-0000-0000-0000-000000000002/70000000-0000-0000-0000-000000000001/attempt-2.png',
+      'Percobaan kedua terlalu cepat.',
+      -6.200000,
+      106.816666,
+      null
+    )
+  $$,
+  'P0001',
+  'EVIDENCE_PENDING_REVIEW',
+  'second pending evidence attempt is rejected'
+);
+
+select throws_ok(
+  $$
+    select public.review_task_evidence(
+      (
+        select id
+        from public.task_evidence
+        where task_id = '70000000-0000-0000-0000-000000000001'
+          and attempt_number = 1
+      ),
+      'accepted',
+      null
+    )
+  $$,
+  'P0001',
+  'INTERNAL_REQUIRED',
+  'farmer cannot review task evidence'
+);
+
+reset role;
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"10000000-0000-0000-0000-000000000001","role":"authenticated"}',
+  true
+);
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-0000-0000-000000000001',
+  true
+);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+
+select throws_ok(
+  $$
+    select public.review_task_evidence(
+      (
+        select id
+        from public.task_evidence
+        where task_id = '70000000-0000-0000-0000-000000000001'
+          and attempt_number = 1
+      ),
+      'revision_requested',
+      null
+    )
+  $$,
+  'P0001',
+  'REVIEW_NOTE_REQUIRED',
+  'revision review requires a note'
+);
+select lives_ok(
+  $$
+    select public.review_task_evidence(
+      (
+        select id
+        from public.task_evidence
+        where task_id = '70000000-0000-0000-0000-000000000001'
+          and attempt_number = 1
+      ),
+      'revision_requested',
+      'Foto perlu menampilkan seluruh saluran.'
+    )
+  $$,
+  'internal can request evidence revision'
+);
+select is(
+  (
+    select review_status
+    from public.task_evidence
+    where task_id = '70000000-0000-0000-0000-000000000001'
+      and attempt_number = 1
+  ),
+  'revision_requested',
+  'revision persists on the reviewed evidence attempt'
+);
+select is(
+  (
+    select reviewed_by
+    from public.task_evidence
+    where task_id = '70000000-0000-0000-0000-000000000001'
+      and attempt_number = 1
+  ),
+  '10000000-0000-0000-0000-000000000001'::uuid,
+  'evidence review derives the internal reviewer'
+);
+select is(
+  (
+    select status
+    from public.tasks
+    where id = '70000000-0000-0000-0000-000000000001'
+  ),
+  'sedang_dikerjakan'::public.task_status,
+  'revision keeps the task in progress'
+);
+
+reset role;
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"10000000-0000-0000-0000-000000000002","role":"authenticated"}',
+  true
+);
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-0000-0000-000000000002',
+  true
+);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+
+select lives_ok(
+  $$
+    select public.register_task_evidence(
+      '70000000-0000-0000-0000-000000000001',
+      '10000000-0000-0000-0000-000000000002/70000000-0000-0000-0000-000000000001/attempt-2.png',
+      'Foto sudah diperbaiki.',
+      -6.200000,
+      106.816666,
+      'Seluruh saluran terlihat.'
+    )
+  $$,
+  'farmer can submit a new attempt after revision'
+);
+select is(
+  (
+    select max(attempt_number)
+    from public.task_evidence
+    where task_id = '70000000-0000-0000-0000-000000000001'
+  ),
+  2,
+  'new evidence after revision receives the next attempt number'
+);
+
+reset role;
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"10000000-0000-0000-0000-000000000001","role":"authenticated"}',
+  true
+);
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-0000-0000-000000000001',
+  true
+);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+
+select lives_ok(
+  $$
+    select public.review_task_evidence(
+      (
+        select id
+        from public.task_evidence
+        where task_id = '70000000-0000-0000-0000-000000000001'
+          and attempt_number = 2
+      ),
+      'accepted',
+      null
+    )
+  $$,
+  'internal can accept pending evidence'
+);
+select is(
+  (
+    select review_status
+    from public.task_evidence
+    where task_id = '70000000-0000-0000-0000-000000000001'
+      and attempt_number = 2
+  ),
+  'accepted',
+  'accepted review persists on the selected attempt'
+);
+select is(
+  (
+    select status
+    from public.tasks
+    where id = '70000000-0000-0000-0000-000000000001'
+  ),
+  'selesai'::public.task_status,
+  'accepted evidence completes the assigned task'
+);
+
+reset role;
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"10000000-0000-0000-0000-000000000002","role":"authenticated"}',
+  true
+);
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-0000-0000-000000000002',
+  true
+);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+
+select throws_ok(
+  $$
+    select public.register_task_evidence(
+      '70000000-0000-0000-0000-000000000001',
+      '10000000-0000-0000-0000-000000000002/70000000-0000-0000-0000-000000000001/attempt-2.png',
+      'Task sudah selesai.',
+      -6.200000,
+      106.816666,
+      null
+    )
+  $$,
+  'P0001',
+  'TASK_ALREADY_COMPLETED',
+  'completed task rejects another evidence attempt'
+);
+
+reset role;
 
 select * from finish();
 rollback;
