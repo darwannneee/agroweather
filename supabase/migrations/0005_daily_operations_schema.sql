@@ -184,7 +184,40 @@ alter table public.task_evidence
   add column review_status text,
   add column reviewed_by uuid references public.users(id) on delete set null,
   add column review_note text,
-  add column reviewed_at timestamptz;
+  add column reviewed_at timestamptz,
+  add column storage_object_id uuid;
+
+update public.task_evidence evidence
+set storage_object_id = object.id
+from storage.objects object
+where object.bucket_id = 'task-evidence'
+  and object.name = evidence.photo_path;
+
+do $$
+declare
+  missing_objects jsonb;
+begin
+  select pg_catalog.jsonb_agg(
+    pg_catalog.jsonb_build_object(
+      'evidence_id',
+      evidence.id,
+      'photo_path',
+      evidence.photo_path
+    )
+    order by evidence.created_at, evidence.id
+  )
+  into missing_objects
+  from public.task_evidence evidence
+  where evidence.storage_object_id is null;
+
+  if missing_objects is not null then
+    raise exception using
+      message = 'EVIDENCE_STORAGE_OBJECT_MISSING',
+      detail = missing_objects::text,
+      hint = 'Restore or explicitly resolve each evidence object before rerunning this migration.';
+  end if;
+end;
+$$;
 
 with numbered as (
   select
@@ -219,12 +252,17 @@ where evidence.id = numbered.id;
 alter table public.task_evidence
   alter column attempt_number set not null,
   alter column review_status set not null,
+  alter column storage_object_id set not null,
   add constraint task_evidence_attempt_positive
     check (attempt_number > 0),
   add constraint task_evidence_review_status_check
     check (review_status in ('pending', 'accepted', 'revision_requested')),
   add constraint task_evidence_task_attempt_unique
-    unique (task_id, attempt_number);
+    unique (task_id, attempt_number),
+  add constraint task_evidence_storage_object_fkey
+    foreign key (storage_object_id)
+    references storage.objects(id)
+    on delete restrict;
 
 create unique index task_evidence_one_pending_idx
   on public.task_evidence(task_id)

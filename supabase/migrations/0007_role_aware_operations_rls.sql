@@ -28,26 +28,6 @@ from public, anon, authenticated;
 grant execute on function public.can_access_plot(uuid)
 to authenticated;
 
-create or replace function
-  public.is_task_evidence_object_referenced(p_name text)
-returns boolean
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select exists (
-    select 1
-    from public.task_evidence evidence
-    where evidence.photo_path = p_name
-  )
-$$;
-
-revoke all on function public.is_task_evidence_object_referenced(text)
-from public, anon, authenticated;
-grant execute on function public.is_task_evidence_object_referenced(text)
-to authenticated;
-
 alter table public.users enable row level security;
 alter table public.lahan enable row level security;
 alter table public.absensi enable row level security;
@@ -314,5 +294,4 @@ using (
     where task.id::text = (storage.foldername(name))[2]
       and task.assigned_to = auth.uid()
   )
-  and not public.is_task_evidence_object_referenced(name)
 );

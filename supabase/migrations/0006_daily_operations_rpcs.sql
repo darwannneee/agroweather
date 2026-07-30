@@ -1218,6 +1218,7 @@ declare
   normalized_path text;
   normalized_note text;
   normalized_summary text;
+  storage_object_id uuid;
   required_path_pattern text;
   haversine_a double precision;
   distance_m numeric;
@@ -1277,7 +1278,8 @@ begin
     raise exception 'EVIDENCE_PHOTO_PATH_INVALID';
   end if;
 
-  perform 1
+  select object.id
+    into storage_object_id
     from storage.objects object
     where object.bucket_id = 'task-evidence'
       and object.name = normalized_path
@@ -1387,6 +1389,7 @@ begin
     farmer_id,
     lahan_id,
     photo_path,
+    storage_object_id,
     note,
     lat,
     lng,
@@ -1398,6 +1401,7 @@ begin
     caller_farmer_id,
     task.lahan_id,
     normalized_path,
+    storage_object_id,
     normalized_note,
     p_lat,
     p_lng,

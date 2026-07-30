@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(208);
+select plan(210);
 
 select has_table('public', 'weather_snapshots', 'weather snapshots exist');
 select has_table('public', 'ai_generation_runs', 'generation runs exist');
@@ -49,11 +49,29 @@ select has_column('public', 'task_evidence', 'review_status', 'evidence has revi
 select has_column('public', 'task_evidence', 'reviewed_by', 'evidence has reviewer');
 select has_column('public', 'task_evidence', 'review_note', 'evidence has review note');
 select has_column('public', 'task_evidence', 'reviewed_at', 'evidence has review time');
+select has_column(
+  'public',
+  'task_evidence',
+  'storage_object_id',
+  'evidence links to the immutable storage object'
+);
 select has_column('public', 'absensi', 'attendance_date', 'attendance has Jakarta date');
 
 select col_not_null('public', 'tasks', 'scheduled_for', 'task date is required');
 select col_not_null('public', 'task_evidence', 'attempt_number', 'attempt is required');
 select col_not_null('public', 'task_evidence', 'review_status', 'review status is required');
+select col_not_null(
+  'public',
+  'task_evidence',
+  'storage_object_id',
+  'evidence storage object is required'
+);
+select col_is_fk(
+  'public',
+  'task_evidence',
+  'storage_object_id',
+  'evidence storage object is protected by a foreign key'
+);
 select col_not_null('public', 'absensi', 'attendance_date', 'attendance date is required');
 
 select has_index('public', 'ai_generation_targets', 'ai_generation_targets_one_current_idx', 'one current target index exists');
@@ -2277,12 +2295,33 @@ insert into public.absensi (
     (now() at time zone 'Asia/Jakarta')::date
   );
 
+insert into storage.objects (bucket_id, name, owner, owner_id) values
+  (
+    'task-evidence',
+    '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000001/referenced.jpg',
+    '10000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000002'
+  ),
+  (
+    'task-evidence',
+    '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000001/orphan.jpg',
+    '10000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000002'
+  ),
+  (
+    'task-evidence',
+    '10000000-0000-0000-0000-000000000003/80000000-0000-0000-0000-000000000002/farmer-b.jpg',
+    '10000000-0000-0000-0000-000000000003',
+    '10000000-0000-0000-0000-000000000003'
+  );
+
 insert into public.task_evidence (
   id,
   task_id,
   farmer_id,
   lahan_id,
   photo_path,
+  storage_object_id,
   note,
   attempt_number,
   review_status
@@ -2293,6 +2332,13 @@ insert into public.task_evidence (
     '10000000-0000-0000-0000-000000000002',
     '20000000-0000-0000-0000-000000000002',
     '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000001/referenced.jpg',
+    (
+      select object.id
+      from storage.objects object
+      where object.bucket_id = 'task-evidence'
+        and object.name =
+          '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000001/referenced.jpg'
+    ),
     'Bukti Farmer A untuk pengujian RLS.',
     1,
     'revision_requested'
@@ -2303,6 +2349,13 @@ insert into public.task_evidence (
     '10000000-0000-0000-0000-000000000003',
     '20000000-0000-0000-0000-000000000004',
     '10000000-0000-0000-0000-000000000003/80000000-0000-0000-0000-000000000002/farmer-b.jpg',
+    (
+      select object.id
+      from storage.objects object
+      where object.bucket_id = 'task-evidence'
+        and object.name =
+          '10000000-0000-0000-0000-000000000003/80000000-0000-0000-0000-000000000002/farmer-b.jpg'
+    ),
     'Bukti Farmer B untuk pengujian RLS.',
     1,
     'revision_requested'
@@ -2337,26 +2390,6 @@ insert into public.rekomendasi_cuaca (
     'Tunda pemupukan.'
   );
 
-insert into storage.objects (bucket_id, name, owner, owner_id) values
-  (
-    'task-evidence',
-    '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000001/referenced.jpg',
-    '10000000-0000-0000-0000-000000000002',
-    '10000000-0000-0000-0000-000000000002'
-  ),
-  (
-    'task-evidence',
-    '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000001/orphan.jpg',
-    '10000000-0000-0000-0000-000000000002',
-    '10000000-0000-0000-0000-000000000002'
-  ),
-  (
-    'task-evidence',
-    '10000000-0000-0000-0000-000000000003/80000000-0000-0000-0000-000000000002/farmer-b.jpg',
-    '10000000-0000-0000-0000-000000000003',
-    '10000000-0000-0000-0000-000000000003'
-  );
-
 select is(
   (
     select count(*)
@@ -2387,19 +2420,12 @@ select has_function(
   array['uuid'],
   'plot access helper exists'
 );
-select has_function(
-  'public',
-  'is_task_evidence_object_referenced',
-  array['text'],
-  'storage reference helper exists'
-);
 with helper(signature) as (
   values
-    ('public.can_access_plot(uuid)'),
-    ('public.is_task_evidence_object_referenced(text)')
+    ('public.can_access_plot(uuid)')
 )
 select ok(
-  count(*) = 2
+  count(*) = 1
     and bool_and(function_definition.prosecdef)
     and bool_and(
       function_definition.proconfig = array['search_path=""']::text[]
@@ -2653,22 +2679,40 @@ select is(
   'farmer reads owned plots and plots referenced by assigned tasks'
 );
 select ok(
-  not exists (
+  exists (
+    select 1
+    from public.tasks
+    where id = '80000000-0000-0000-0000-000000000001'
+      and assigned_to = auth.uid()
+  )
+    and not exists (
     select 1 from public.tasks where assigned_to <> auth.uid()
   ),
-  'farmer reads only assigned tasks'
+  'farmer reads own assigned task and no foreign task'
 );
 select ok(
-  not exists (
+  exists (
+    select 1
+    from public.absensi
+    where id = '90000000-0000-0000-0000-000000000001'
+      and farmer_id = auth.uid()
+  )
+    and not exists (
     select 1 from public.absensi where farmer_id <> auth.uid()
   ),
-  'farmer reads only their attendance'
+  'farmer reads own attendance and no foreign attendance'
 );
 select ok(
-  not exists (
+  exists (
+    select 1
+    from public.task_evidence
+    where id = 'a0000000-0000-0000-0000-000000000001'
+      and farmer_id = auth.uid()
+  )
+    and not exists (
     select 1 from public.task_evidence where farmer_id <> auth.uid()
   ),
-  'farmer reads only their evidence'
+  'farmer reads own evidence and no foreign evidence'
 );
 select is(
   (
@@ -2839,20 +2883,16 @@ select is(
   0::bigint,
   'farmer can clean up an unregistered own-path object'
 );
-delete from storage.objects
-where bucket_id = 'task-evidence'
-  and name =
-    '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000001/referenced.jpg';
-select is(
-  (
-    select count(*)
-    from storage.objects
+select throws_ok(
+  $$
+    delete from storage.objects
     where bucket_id = 'task-evidence'
       and name =
         '10000000-0000-0000-0000-000000000002/80000000-0000-0000-0000-000000000001/referenced.jpg'
-  ),
-  1::bigint,
-  'farmer cannot delete an object referenced by immutable evidence'
+  $$,
+  '23503',
+  'update or delete on table "objects" violates foreign key constraint "task_evidence_storage_object_fkey" on table "task_evidence"',
+  'foreign key prevents deleting an object referenced by immutable evidence'
 );
 delete from storage.objects
 where bucket_id = 'task-evidence'
@@ -2886,23 +2926,33 @@ select ok(
     ),
   'farmer B sees own task but not Farmer A task'
 );
-select is(
-  (
-    select count(*)
+select ok(
+  exists (
+    select 1
     from public.absensi
+    where id = '90000000-0000-0000-0000-000000000002'
+      and farmer_id = auth.uid()
+  )
+    and not exists (
+      select 1
+      from public.absensi
     where id = '90000000-0000-0000-0000-000000000001'
   ),
-  0::bigint,
-  'farmer B cannot read Farmer A attendance'
+  'farmer B reads own attendance but not Farmer A attendance'
 );
-select is(
-  (
-    select count(*)
+select ok(
+  exists (
+    select 1
+    from public.task_evidence
+    where id = 'a0000000-0000-0000-0000-000000000002'
+      and farmer_id = auth.uid()
+  )
+    and not exists (
+      select 1
     from public.task_evidence
     where id = 'a0000000-0000-0000-0000-000000000001'
   ),
-  0::bigint,
-  'farmer B cannot read Farmer A evidence'
+  'farmer B reads own evidence but not Farmer A evidence'
 );
 select is(
   (
