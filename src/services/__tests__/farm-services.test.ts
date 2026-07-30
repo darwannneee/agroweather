@@ -4,6 +4,7 @@ import type { PlotFormValues } from '@/lib/farm-types';
 
 import { buildEvidencePath } from '../evidence';
 import { mapPlotRow, toPlotInsert, updatePlot } from '../plots';
+import { mapTaskRow } from '../tasks';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   clear: jest.fn(),
@@ -88,5 +89,44 @@ describe('evidence service helpers', () => {
     expect(buildEvidencePath('farmer-1', 'task-1', 'jpg')).toMatch(
       /^farmer-1\/task-1\/[0-9]+\.jpg$/
     );
+  });
+});
+
+describe('task service mapping', () => {
+  test('maps daily operation fields from a Supabase task row', () => {
+    expect(
+      mapTaskRow({
+        id: 'task-1',
+        lahan_id: 'plot-1',
+        assigned_to: 'farmer-1',
+        assigned_by: 'internal-1',
+        judul: 'Periksa irigasi',
+        deskripsi: 'Pastikan aliran air merata.',
+        status: 'belum_dikerjakan',
+        deadline: null,
+        scheduled_for: '2026-07-30',
+        priority: 'high',
+        source: 'ai',
+        ai_reason: 'Curah hujan diperkirakan rendah.',
+        requires_location: true,
+        unlocked_at: null,
+      })
+    ).toEqual({
+      id: 'task-1',
+      lahanId: 'plot-1',
+      assignedTo: 'farmer-1',
+      assignedBy: 'internal-1',
+      judul: 'Periksa irigasi',
+      deskripsi: 'Pastikan aliran air merata.',
+      status: 'belum_dikerjakan',
+      deadline: null,
+      scheduledFor: '2026-07-30',
+      priority: 'high',
+      source: 'ai',
+      aiReason: 'Curah hujan diperkirakan rendah.',
+      requiresLocation: true,
+      unlockedAt: null,
+      latestEvidence: null,
+    });
   });
 });

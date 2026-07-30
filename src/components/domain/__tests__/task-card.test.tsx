@@ -13,8 +13,13 @@ const task: FarmTask = {
   deskripsi: 'Bersihkan saluran air di sisi utara.',
   status: 'belum_dikerjakan',
   deadline: '2026-08-02',
+  scheduledFor: '2026-07-30',
+  priority: 'medium',
+  source: 'manual',
+  aiReason: null,
   requiresLocation: true,
   unlockedAt: null,
+  latestEvidence: null,
 };
 
 describe('TaskCard', () => {

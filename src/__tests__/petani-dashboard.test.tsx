@@ -141,8 +141,13 @@ function task(
     deskripsi: null,
     status: 'belum_dikerjakan',
     deadline: null,
+    scheduledFor: '2026-07-30',
+    priority: 'medium',
+    source: 'manual',
+    aiReason: null,
     requiresLocation: true,
     unlockedAt: null,
+    latestEvidence: null,
     ...overrides,
   };
 }

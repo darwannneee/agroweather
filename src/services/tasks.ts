@@ -1,6 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { FarmTask, FarmTaskStatus } from '@/lib/farm-types';
+import type {
+  FarmTask,
+  FarmTaskStatus,
+  TaskPriority,
+  TaskSource,
+} from '@/lib/farm-types';
 
 import { supabase } from './supabase';
 
@@ -13,12 +18,16 @@ export type TaskRow = {
   deskripsi: string | null;
   status: FarmTaskStatus;
   deadline: string | null;
+  scheduled_for: string;
+  priority: TaskPriority;
+  source: TaskSource;
+  ai_reason: string | null;
   requires_location: boolean | null;
   unlocked_at: string | null;
 };
 
 const TASK_SELECT =
-  'id,lahan_id,assigned_to,assigned_by,judul,deskripsi,status,deadline,requires_location,unlocked_at';
+  'id,lahan_id,assigned_to,assigned_by,judul,deskripsi,status,deadline,scheduled_for,priority,source,ai_reason,requires_location,unlocked_at';
 
 export function mapTaskRow(row: TaskRow): FarmTask {
   return {
@@ -30,8 +39,13 @@ export function mapTaskRow(row: TaskRow): FarmTask {
     deskripsi: row.deskripsi,
     status: row.status,
     deadline: row.deadline,
+    scheduledFor: row.scheduled_for,
+    priority: row.priority,
+    source: row.source,
+    aiReason: row.ai_reason,
     requiresLocation: row.requires_location ?? true,
     unlockedAt: row.unlocked_at,
+    latestEvidence: null,
   };
 }
 

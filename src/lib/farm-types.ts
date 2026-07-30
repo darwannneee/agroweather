@@ -36,6 +36,23 @@ export type FarmPlot = {
 };
 
 export type FarmTaskStatus = 'belum_dikerjakan' | 'sedang_dikerjakan' | 'selesai';
+export type TaskPriority = 'low' | 'medium' | 'high';
+export type TaskSource = 'manual' | 'ai';
+export type EvidenceReviewStatus =
+  | 'pending'
+  | 'accepted'
+  | 'revision_requested';
+export type AiDraftStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'superseded';
+export type GenerationStatus = 'running' | 'succeeded' | 'partial' | 'failed';
+
+export type LatestEvidenceSummary = {
+  status: EvidenceReviewStatus;
+  reviewNote: string | null;
+};
 
 export type FarmTask = {
   id: string;
@@ -46,8 +63,13 @@ export type FarmTask = {
   deskripsi: string | null;
   status: FarmTaskStatus;
   deadline: string | null;
+  scheduledFor: string;
+  priority: TaskPriority;
+  source: TaskSource;
+  aiReason: string | null;
   requiresLocation: boolean;
   unlockedAt: string | null;
+  latestEvidence: LatestEvidenceSummary | null;
 };
 
 export type TaskEvidence = {
@@ -61,4 +83,68 @@ export type TaskEvidence = {
   lng: number | null;
   aiPlaceholderSummary: string | null;
   createdAt: string;
+};
+
+export type AttendanceRecord = {
+  id: string;
+  farmerId: string;
+  farmerName: string;
+  plotId: string;
+  plotName: string;
+  attendanceDate: string;
+  checkedInAt: string;
+  distanceM: number | null;
+  latitude: number;
+  longitude: number;
+};
+
+export type DraftWeatherSummary = {
+  observedAt: string;
+  description: string;
+  temperatureC: number;
+  humidityPercent: number;
+  windSpeedMps: number;
+  rainMm: number;
+  forecastMinTemperatureC: number | null;
+  forecastMaxTemperatureC: number | null;
+  forecastMaxRainProbability: number | null;
+};
+
+export type AiTaskDraft = {
+  id: string;
+  plotId: string;
+  plotName: string;
+  proposedAssigneeId: string;
+  proposedAssigneeName: string;
+  scheduledFor: string;
+  title: string;
+  description: string;
+  priority: TaskPriority;
+  requiresLocation: boolean;
+  aiReason: string;
+  status: AiDraftStatus;
+  model: string;
+  weather: DraftWeatherSummary;
+  createdAt: string;
+};
+
+export type EvidenceAttempt = {
+  id: string;
+  taskId: string;
+  attemptNumber: number;
+  photoPath: string;
+  photoUrl: string | null;
+  note: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  status: EvidenceReviewStatus;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+};
+
+export type OperationalTask = {
+  task: FarmTask;
+  plotName: string;
+  farmerName: string;
 };
