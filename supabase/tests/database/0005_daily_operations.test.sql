@@ -1,11 +1,36 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(144);
+select plan(152);
 
 select has_table('public', 'weather_snapshots', 'weather snapshots exist');
 select has_table('public', 'ai_generation_runs', 'generation runs exist');
 select has_table('public', 'ai_generation_targets', 'generation targets exist');
 select has_table('public', 'ai_task_drafts', 'AI drafts exist');
+
+select has_column(
+  'public',
+  'ai_generation_targets',
+  'request_payload',
+  'generation targets preserve the normalized successful request'
+);
+select is(
+  (
+    select pg_catalog.format_type(attribute.atttypid, attribute.atttypmod)
+    from pg_catalog.pg_attribute attribute
+    where attribute.attrelid =
+      'public.ai_generation_targets'::regclass
+      and attribute.attname = 'request_payload'
+      and not attribute.attisdropped
+  ),
+  'jsonb',
+  'generation request payload uses JSONB'
+);
+select col_has_check(
+  'public',
+  'ai_generation_targets',
+  array['status', 'request_payload']::name[],
+  'generation request payload shape and successful status are constrained'
+);
 
 select has_column('public', 'tasks', 'scheduled_for', 'tasks have work date');
 select has_column('public', 'tasks', 'priority', 'tasks have priority');
@@ -215,17 +240,32 @@ from expected_function
 join pg_catalog.pg_proc function_definition
   on function_definition.oid = expected_function.signature::regprocedure;
 
+with function_definition(sql) as (
+  select pg_catalog.lower(
+    pg_catalog.pg_get_functiondef(
+      'public.approve_ai_task_draft(uuid,uuid,text,text,text,boolean)'
+        ::regprocedure
+    )
+  )
+)
 select ok(
-  pg_catalog.strpos(
-    pg_catalog.lower(
-      pg_catalog.pg_get_functiondef(
-        'public.approve_ai_task_draft(uuid,uuid,text,text,text,boolean)'
-          ::regprocedure
-      )
-    ),
-    'for share'
-  ) > 0,
-  'draft approval locks the active plot and selected assignee'
+  sql ~
+    'from public[.]lahan plot[[:space:]]+where plot[.]id = draft[.]lahan_id[[:space:]]+for share;'
+    and sql ~
+      'from public[.]users farmer[[:space:]]+where farmer[.]id = p_assignee_id[[:space:]]+for share;',
+  'draft approval separately locks the active plot and selected assignee'
+)
+from function_definition;
+
+select ok(
+  pg_catalog.lower(
+    pg_catalog.pg_get_functiondef(
+      'public.register_task_evidence(uuid,text,text,numeric,numeric,text)'
+        ::regprocedure
+    )
+  ) ~
+    'from storage[.]objects object[[:space:]]+where object[.]bucket_id = ''task-evidence''[[:space:]]+and object[.]name = normalized_path[[:space:]]+for key share;',
+  'evidence registration holds a key-share lock on the exact storage object'
 );
 
 select ok(
@@ -628,7 +668,8 @@ insert into public.ai_generation_targets (
   version,
   status,
   draft_count,
-  weather_snapshot_id
+  weather_snapshot_id,
+  request_payload
 ) values (
   '50000000-0000-0000-0000-000000000001',
   '40000000-0000-0000-0000-000000000001',
@@ -637,7 +678,20 @@ insert into public.ai_generation_targets (
   1,
   'succeeded',
   1,
-  '30000000-0000-0000-0000-000000000001'
+  '30000000-0000-0000-0000-000000000001',
+  '{
+    "model": "test/model",
+    "result_summary": null,
+    "drafts": [
+      {
+        "judul": "Draft lama",
+        "deskripsi": "Draft lama yang harus digantikan.",
+        "priority": "medium",
+        "requires_location": true,
+        "ai_reason": "Digantikan oleh hasil generasi terbaru."
+      }
+    ]
+  }'::jsonb
 );
 
 insert into public.ai_task_drafts (
@@ -789,6 +843,75 @@ select lives_ok(
     )
   $$,
   'exact retry remains idempotent after the run becomes terminal'
+);
+
+reset role;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"10000000-0000-0000-0000-000000000001","role":"authenticated"}',
+  true
+);
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-0000-0000-000000000001',
+  true
+);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+
+select lives_ok(
+  $$
+    select public.approve_ai_task_draft(
+      (
+        select draft.id
+        from public.ai_task_drafts draft
+        join public.ai_generation_targets target
+          on target.id = draft.generation_target_id
+        where target.run_id =
+          '40000000-0000-0000-0000-000000000002'
+          and draft.judul = 'Cek drainase'
+      ),
+      '10000000-0000-0000-0000-000000000002',
+      'Cek drainase disetujui',
+      'Periksa saluran drainase dan laporkan hasil prioritas.',
+      'medium',
+      false
+    )
+  $$,
+  'internal can approve a generated draft with operational edits'
+);
+select is(
+  (
+    select draft.judul
+    from public.ai_task_drafts draft
+    join public.ai_generation_targets target
+      on target.id = draft.generation_target_id
+    where target.run_id = '40000000-0000-0000-0000-000000000002'
+      and draft.status = 'approved'
+  ),
+  'Cek drainase disetujui',
+  'approval persists edits without changing the original request identity'
+);
+
+reset role;
+set local role service_role;
+
+select lives_ok(
+  $$
+    select public.replace_ai_task_drafts(
+      '40000000-0000-0000-0000-000000000002',
+      '20000000-0000-0000-0000-000000000001',
+      (now() at time zone 'Asia/Jakarta')::date,
+      '30000000-0000-0000-0000-000000000001',
+      'test/model',
+      'Dua draft baru',
+      '[
+        {"judul":"Cek drainase","deskripsi":"Periksa seluruh saluran drainase lahan.","priority":"high","requires_location":true,"ai_reason":"Hujan diperkirakan meningkat."},
+        {"judul":"Pantau daun","deskripsi":"Amati kondisi daun dan catat perubahan warna.","priority":"medium","requires_location":false,"ai_reason":"Kelembapan cukup tinggi hari ini."}
+      ]'::jsonb
+    )
+  $$,
+  'exact retry remains idempotent after an approved draft is edited'
 );
 
 select throws_ok(
@@ -987,6 +1110,15 @@ select is(
   ),
   'failed',
   'failure recorder persists the requested terminal status'
+);
+select ok(
+  not exists (
+    select 1
+    from public.ai_generation_targets target
+    where (target.status = 'succeeded')
+      is distinct from (target.request_payload is not null)
+  ),
+  'only successful targets preserve a request payload'
 );
 
 insert into public.ai_task_drafts (

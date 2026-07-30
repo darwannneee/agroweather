@@ -40,9 +40,44 @@ create table public.ai_generation_targets (
   draft_count integer not null default 0 check (draft_count between 0 and 5),
   weather_snapshot_id uuid references public.weather_snapshots(id) on delete set null,
   result_summary text,
+  request_payload jsonb,
   error_code text,
   created_at timestamptz not null default now(),
   completed_at timestamptz,
+  constraint ai_generation_targets_request_payload_check check (
+    (
+      status = 'succeeded'
+      and request_payload is not null
+      and pg_catalog.jsonb_typeof(request_payload) = 'object'
+      and request_payload ?& array['model', 'result_summary', 'drafts']
+      and request_payload - array['model', 'result_summary', 'drafts']
+        = '{}'::jsonb
+      and pg_catalog.jsonb_typeof(request_payload -> 'model') = 'string'
+      and pg_catalog.char_length(request_payload ->> 'model')
+        between 1 and 200
+      and request_payload ->> 'model' =
+        pg_catalog.btrim(request_payload ->> 'model')
+      and (
+        request_payload -> 'result_summary' = 'null'::jsonb
+        or (
+          pg_catalog.jsonb_typeof(request_payload -> 'result_summary') =
+            'string'
+          and pg_catalog.char_length(
+            request_payload ->> 'result_summary'
+          ) between 1 and 2000
+          and request_payload ->> 'result_summary' =
+            pg_catalog.btrim(request_payload ->> 'result_summary')
+        )
+      )
+      and pg_catalog.jsonb_typeof(request_payload -> 'drafts') = 'array'
+      and pg_catalog.jsonb_array_length(request_payload -> 'drafts')
+        between 0 and 5
+    )
+    or (
+      status <> 'succeeded'
+      and request_payload is null
+    )
+  ),
   unique (run_id, lahan_id),
   unique (lahan_id, scheduled_for, version)
 );

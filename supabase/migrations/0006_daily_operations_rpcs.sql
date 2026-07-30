@@ -60,7 +60,7 @@ declare
   normalized_model text;
   normalized_summary text;
   incoming_canonical jsonb := '[]'::jsonb;
-  stored_canonical jsonb;
+  incoming_payload jsonb;
   draft record;
 begin
   if p_run_id is null
@@ -141,6 +141,12 @@ begin
   into incoming_canonical
   from pg_catalog.jsonb_array_elements(incoming_canonical) element(item);
 
+  incoming_payload := pg_catalog.jsonb_build_object(
+    'model', normalized_model,
+    'result_summary', normalized_summary,
+    'drafts', incoming_canonical
+  );
+
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended(
       p_lahan_id::text || ':' || p_scheduled_for::text,
@@ -170,31 +176,11 @@ begin
   for update;
 
   if found then
-    select coalesce(
-      pg_catalog.jsonb_agg(canonical.item order by canonical.item::text),
-      '[]'::jsonb
-    )
-    into stored_canonical
-    from (
-      select pg_catalog.jsonb_build_object(
-        'judul', pg_catalog.btrim(existing_draft.judul),
-        'deskripsi', pg_catalog.btrim(existing_draft.deskripsi),
-        'priority', existing_draft.priority,
-        'requires_location', existing_draft.requires_location,
-        'ai_reason', pg_catalog.btrim(existing_draft.ai_reason)
-      ) as item
-      from public.ai_task_drafts existing_draft
-      where existing_draft.generation_target_id = existing_target.id
-    ) canonical;
-
     if existing_target.status = 'succeeded'
       and existing_target.scheduled_for = p_scheduled_for
       and existing_target.weather_snapshot_id = p_weather_snapshot_id
       and existing_target.draft_count = requested_count
-      and existing_target.result_summary is not distinct from
-        normalized_summary
-      and generation_run.model = normalized_model
-      and stored_canonical = incoming_canonical
+      and existing_target.request_payload = incoming_payload
     then
       return existing_target.id;
     end if;
@@ -337,6 +323,7 @@ begin
   update public.ai_generation_targets
   set status = 'succeeded',
       draft_count = inserted_count,
+      request_payload = incoming_payload,
       completed_at = pg_catalog.now()
   where id = target_id;
 
@@ -1156,12 +1143,13 @@ begin
     raise exception 'EVIDENCE_PHOTO_PATH_INVALID';
   end if;
 
-  if not exists (
-    select 1
+  perform 1
     from storage.objects object
     where object.bucket_id = 'task-evidence'
       and object.name = normalized_path
-  ) then
+    for key share;
+
+  if not found then
     raise exception 'EVIDENCE_PHOTO_NOT_FOUND';
   end if;
 
