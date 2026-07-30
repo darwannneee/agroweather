@@ -29,7 +29,7 @@
 
 - Create `supabase/config.toml` — local Supabase and function configuration.
 - Create `supabase/migrations/0005_daily_operations_schema.sql` — new tables, columns, indexes, and backfills.
-- Create `supabase/migrations/0006_daily_operations_rpcs.sql` — task draft, evidence, and task-start transitions.
+- Create `supabase/migrations/0006_daily_operations_rpcs.sql` — task draft, attendance, evidence, and task-start transitions.
 - Create `supabase/migrations/0007_role_aware_operations_rls.sql` — replace broad MVP policies with role-aware policies.
 - Create `supabase/tests/database/0005_daily_operations.test.sql` — schema, RPC, and RLS pgTAP coverage.
 - Create `supabase/functions/_shared/daily-date.ts` — Asia/Jakarta date helper usable by Edge tests.
@@ -203,7 +203,7 @@ Create `supabase/tests/database/0005_daily_operations.test.sql` with the initial
 ```sql
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(28);
+select plan(32);
 
 select has_table('public', 'weather_snapshots', 'weather snapshots exist');
 select has_table('public', 'ai_generation_runs', 'generation runs exist');
@@ -228,10 +228,14 @@ select col_not_null('public', 'task_evidence', 'attempt_number', 'attempt is req
 select col_not_null('public', 'task_evidence', 'review_status', 'review status is required');
 select col_not_null('public', 'absensi', 'attendance_date', 'attendance date is required');
 
-select has_index('public', 'ai_generation_targets_one_current_idx', 'one current target index exists');
-select has_index('public', 'task_evidence_one_pending_idx', 'one pending evidence index exists');
-select has_index('public', 'absensi_farmer_plot_date_idx', 'daily attendance uniqueness exists');
-select has_index('public', 'tasks_scheduled_assignee_idx', 'daily farmer task index exists');
+select has_index('public', 'ai_generation_targets', 'ai_generation_targets_one_current_idx', 'one current target index exists');
+select has_index('public', 'task_evidence', 'task_evidence_one_pending_idx', 'one pending evidence index exists');
+select has_index('public', 'absensi', 'absensi_farmer_plot_date_idx', 'daily attendance uniqueness exists');
+select has_index('public', 'tasks', 'tasks_scheduled_assignee_idx', 'daily farmer task index exists');
+select index_is_unique('public', 'ai_generation_targets', 'ai_generation_targets_one_current_idx', 'current target index is unique');
+select index_is_partial('public', 'ai_generation_targets', 'ai_generation_targets_one_current_idx', 'current target index is partial');
+select index_is_unique('public', 'task_evidence', 'task_evidence_one_pending_idx', 'pending evidence index is unique');
+select index_is_partial('public', 'task_evidence', 'task_evidence_one_pending_idx', 'pending evidence index is partial');
 
 select col_has_check('public', 'ai_task_drafts', 'status', 'draft status is constrained');
 select col_has_check('public', 'ai_task_drafts', 'priority', 'draft priority is constrained');
@@ -351,7 +355,10 @@ update public.tasks
 set scheduled_for = (created_at at time zone 'Asia/Jakarta')::date
 where scheduled_for is null;
 
-alter table public.tasks alter column scheduled_for set not null;
+alter table public.tasks
+  alter column scheduled_for
+    set default ((now() at time zone 'Asia/Jakarta')::date),
+  alter column scheduled_for set not null;
 
 alter table public.ai_task_drafts
   add constraint ai_task_drafts_created_task_fkey
@@ -427,7 +434,27 @@ create index weather_snapshots_plot_created_idx
   on public.weather_snapshots(lahan_id, created_at desc);
 ```
 
-If hosted data contains duplicate same-day attendance rows, stop before applying the unique index, report those IDs, and resolve them explicitly; do not silently delete operational records.
+Immediately before creating `absensi_farmer_plot_date_idx`, add a `DO` block
+that groups by farmer, plot, and Jakarta date. If duplicates exist, raise
+`DUPLICATE_ATTENDANCE_ROWS` with `array_agg(id order by waktu_masuk)` in the
+exception detail. Stop the migration and resolve those IDs explicitly; do not
+silently delete operational records.
+
+Also audit completed legacy tasks without evidence:
+
+```sql
+select t.id, t.assigned_to, t.lahan_id, t.created_at
+from public.tasks t
+where t.status = 'selesai'
+  and not exists (
+    select 1 from public.task_evidence e where e.task_id = t.id
+  )
+order by t.created_at;
+```
+
+These rows are grandfathered as completed historical work. Do not synthesize
+evidence or reopen them; the new RLS/RPC transitions prevent creating new rows in
+that state without accepted evidence.
 
 - [ ] **Step 4: Reset and verify GREEN**
 
@@ -449,7 +476,7 @@ git commit -m "feat: add daily operations schema"
 
 ---
 
-### Task 3: Add transactional draft, task, and evidence RPCs
+### Task 3: Add transactional draft, attendance, task, and evidence RPCs
 
 **Files:**
 - Create: `supabase/migrations/0006_daily_operations_rpcs.sql`
@@ -498,6 +525,12 @@ select has_function(
 );
 select has_function(
   'public',
+  'register_attendance',
+  array['uuid', 'numeric', 'numeric'],
+  'server-validated attendance RPC exists'
+);
+select has_function(
+  'public',
   'register_task_evidence',
   array['uuid', 'text', 'text', 'numeric', 'numeric', 'text'],
   'register evidence RPC exists'
@@ -517,6 +550,10 @@ Add fixtures for one internal user, two farmers, one plot, one run, one weather 
 - bulk approval creates one task per selected pending draft and rolls back all
   inserts if any selected draft is not pending;
 - a farmer cannot approve a draft;
+- attendance derives farmer, Jakarta date, timestamp, distance, and valid status
+  server-side;
+- attendance rejects an inactive/unowned plot and outside-radius coordinates;
+- repeated attendance for the same farmer/plot/date returns the existing row;
 - evidence registration derives `farmer_id`, `lahan_id`, and attempt number from the assigned task;
 - location-required evidence rejects missing or outside-radius coordinates;
 - a second pending attempt throws `EVIDENCE_PENDING_REVIEW`;
@@ -540,7 +577,7 @@ Create `supabase/migrations/0006_daily_operations_rpcs.sql` beginning with:
 
 ```sql
 create or replace function public.current_user_role()
-returns user_role
+returns public.user_role
 language sql
 stable
 security definer
@@ -562,6 +599,12 @@ $$;
 grant execute on function public.current_user_role() to authenticated;
 grant execute on function public.is_internal() to authenticated;
 ```
+
+Every function created in this migration must use `set search_path = ''` and
+schema-qualified tables, types, helpers, and built-ins where applicable. For
+every signature, first `revoke all ... from public, anon, authenticated`, then
+grant only the narrow caller role described below. Do not rely on PostgreSQL's
+default `PUBLIC EXECUTE`.
 
 Implement
 `replace_ai_task_drafts(p_run_id uuid, p_lahan_id uuid, p_scheduled_for date,
@@ -668,7 +711,27 @@ assignee, title, description, priority, and location requirement. Return the
 created task UUIDs in input order. Grant it to `authenticated`; a duplicate or
 stale selection must create zero tasks.
 
-- [ ] **Step 5: Implement farmer task/evidence transitions**
+- [ ] **Step 5: Implement server-validated attendance**
+
+`register_attendance(p_lahan_id uuid, p_lat numeric, p_lng numeric)` must be
+`security definer`, granted only to `authenticated`, and:
+
+1. require `public.current_user_role() = 'farmer'`;
+2. reject non-finite/out-of-range coordinates;
+3. lock and load an active plot whose `farmer_id = auth.uid()`;
+4. derive `attendance_date` with
+   `(statement_timestamp() at time zone 'Asia/Jakarta')::date`;
+5. calculate haversine distance from the stored plot center;
+6. reject distance beyond `radius_geofence_m`;
+7. take an advisory transaction lock for farmer/plot/date;
+8. insert `farmer_id`, `lahan_id`, server time/date, supplied coordinates,
+   computed distance, and `status_geofence = 'valid'`;
+9. on the existing daily unique row, return that row without mutating it.
+
+The client may still pre-check the geofence for immediate UX, but this RPC is the
+authoritative attendance write.
+
+- [ ] **Step 6: Implement farmer task/evidence transitions**
 
 `start_assigned_task` must require `assigned_to = auth.uid()`, reject a completed task, and update only:
 
@@ -698,8 +761,8 @@ unlocked_at = coalesce(unlocked_at, now())
 
 ```sql
 status = case
-  when p_decision = 'accepted' then 'selesai'::task_status
-  else 'sedang_dikerjakan'::task_status
+  when p_decision = 'accepted' then 'selesai'::public.task_status
+  else 'sedang_dikerjakan'::public.task_status
 end
 ```
 
@@ -707,7 +770,7 @@ Grant farmer transition RPCs to `authenticated`; authorization remains inside ea
 Bound a revision note to 3–1,000 characters and a rejection reason to 3–1,000
 characters before writing either field.
 
-- [ ] **Step 6: Verify all database transitions**
+- [ ] **Step 7: Verify all database transitions**
 
 Run:
 
@@ -718,7 +781,7 @@ npm run db:test
 
 Expected: schema and RPC tests pass, including double-submit and role failures.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add supabase/migrations/0006_daily_operations_rpcs.sql supabase/tests/database/0005_daily_operations.test.sql
@@ -744,7 +807,10 @@ Add pgTAP fixtures with:
 - attendance and evidence for both farmers;
 - one AI draft/run/target/weather snapshot.
 
-Use `set_config('request.jwt.claims', ...)` to impersonate each user. Assert:
+For every identity, use
+`set local role authenticated` (or `anon`) together with
+`set_config('request.jwt.claims', ...)`, then `reset role` before changing
+identities. Running claims as the database owner does not exercise RLS. Assert:
 
 - internal reads all operational rows;
 - farmer A reads plot A and plot B because task B is assigned to A;
@@ -753,6 +819,8 @@ Use `set_config('request.jwt.claims', ...)` to impersonate each user. Assert:
 - no farmer reads AI drafts/runs/targets/weather snapshots;
 - farmer cannot update task to `selesai` directly;
 - internal cannot bypass evidence review with a direct task status update;
+- farmer cannot update their own `users.role`;
+- anon signup cannot create an internal account;
 - farmer cannot insert `task_evidence` directly or forge review fields;
 - farmer cannot update evidence review fields directly;
 - farmer can delete an unregistered own-path storage object after an RPC failure
@@ -776,6 +844,8 @@ Create `supabase/migrations/0007_role_aware_operations_rls.sql`. Enable RLS on a
 
 ```sql
 drop policy if exists "auth read users for assignment" on public.users;
+drop policy if exists "users self insert" on public.users;
+drop policy if exists "users self update" on public.users;
 drop policy if exists "auth read lahan" on public.lahan;
 drop policy if exists "auth write lahan" on public.lahan;
 drop policy if exists "auth read absensi" on public.absensi;
@@ -832,19 +902,18 @@ public.is_internal()
 and status = 'belum_dikerjakan'
 and source = 'manual'
 and source_draft_id is null
+and assigned_by = auth.uid()
+and exists (
+  select 1 from public.users u
+  where u.id = assigned_to and u.role = 'farmer'
+)
+and exists (
+  select 1 from public.lahan l
+  where l.id = lahan_id and l.status = 'aktif'
+)
 
 -- absensi select
 public.is_internal() or farmer_id = auth.uid()
-
--- absensi insert
-farmer_id = auth.uid()
-and status_geofence = 'valid'
-and exists (
-  select 1 from public.lahan l
-  where l.id = lahan_id
-    and l.farmer_id = auth.uid()
-    and l.status = 'aktif'
-)
 
 -- task_evidence select
 public.is_internal() or farmer_id = auth.uid()
@@ -855,6 +924,8 @@ public.is_internal()
 
 Do not create direct insert/update/delete policies on `task_evidence` for
 authenticated users. Registration and review use the constrained RPCs only.
+Do not create direct insert/update/delete policies on `absensi`; attendance is
+written only through `register_attendance`.
 Do not create direct update/delete policies on `tasks`; preserving task/evidence
 audit history takes precedence over direct table mutation. AI approval, farmer
 start, and evidence review remain constrained `security definer` transitions.
@@ -872,7 +943,6 @@ for select using (
 );
 ```
 
-Keep the existing owner-path insert policy.
 Replace the existing owner-path insert policy so its second path segment must be
 the UUID of a non-completed task assigned to the current farmer:
 
@@ -904,6 +974,13 @@ and not exists (
   where e.photo_path = storage.objects.name
 )
 ```
+
+Harden the legacy signup boundary in the same migration. Replace
+`public.sign_up_user(text,text,text,public.user_role)` with a
+`security definer set search_path = ''` implementation that rejects every
+`p_role` except `farmer` and always inserts `farmer`. Revoke it from `PUBLIC` and
+`authenticated`, then grant only to `anon`. Internal accounts must be provisioned
+through the Supabase administrative path, never public signup.
 
 - [ ] **Step 4: Verify RLS GREEN**
 
@@ -1898,6 +1975,13 @@ expect(mapTaskRow(taskRow, latestEvidence)).toMatchObject({
 await fetchFarmerTasks('farmer-1', '2026-07-30', client);
 expect(taskQuery.eq).toHaveBeenCalledWith('scheduled_for', '2026-07-30');
 
+await checkInIfInsideRadius(checkInInput, client);
+expect(client.rpc).toHaveBeenCalledWith('register_attendance', {
+  p_lahan_id: 'plot-1',
+  p_lat: -7.25,
+  p_lng: 112.76,
+});
+
 await createTaskForPlot({
   lahanId: 'plot-1',
   assignedTo: 'farmer-1',
@@ -1990,13 +2074,21 @@ Query the exact `attendance_date`, filter `status_geofence = valid`, join
 `lahan(nama_lahan)` and `users(nama)`, order `waktu_masuk` ascending, limit one,
 and return the first valid row.
 
-Refactor `checkInIfInsideRadius` to derive `attendanceDate = jakartaDate()`,
-check an existing row with
-`.eq('farmer_id', input.farmerId).eq('lahan_id', input.plot.id).eq('attendance_date', attendanceDate)`,
-and insert the same `attendance_date` when no row exists. Remove the old
-device-local `localDayRange` filtering. If concurrent requests race and the
-`absensi_farmer_plot_date_idx` unique index wins, re-read that exact date and
-return the existing attendance instead of surfacing a duplicate error.
+Refactor `checkInIfInsideRadius` to keep the existing foreground GPS/geofence
+pre-check for immediate copy, then call:
+
+```ts
+client.rpc('register_attendance', {
+  p_lahan_id: input.plot.id,
+  p_lat: input.userLocation.latitude,
+  p_lng: input.userLocation.longitude,
+});
+```
+
+Map the returned server-validated row to `AttendanceRecord`. Remove the old
+device-local `localDayRange`, direct `absensi` insert, client-supplied
+`attendance_date`, and duplicate-retry branch; the RPC owns date, distance,
+validity, and idempotency.
 
 - [ ] **Step 4: Implement `ai-drafts.ts`**
 
@@ -2524,6 +2616,8 @@ Assert:
 - accept calls `reviewTaskEvidence(id, 'accepted', null)`;
 - revision requires a note and calls `revision_requested`;
 - evidence history remains after review refresh;
+- a grandfathered completed task with no evidence renders a historical
+  completion notice and no review actions;
 - overlapping review actions are blocked;
 - raw service errors never render;
 - no GPS or provider request occurs.
@@ -2549,6 +2643,8 @@ The screen loads task detail, plot, farmer, and `fetchTaskEvidenceAttempts`. Ren
 - show controlled Indonesian messages.
 
 Wrap the route in `RoleGuard requiredRole="internal"`.
+If `task.status === 'selesai'` and there are no attempts, render
+`Diselesaikan sebelum alur review bukti` as read-only legacy history.
 For attempts with coordinates, calculate distance with the existing pure
 `evaluateGeofence` helper using the loaded plot center/radius and render both
 distance and whether it is inside/outside the configured radius. Missing
@@ -2854,6 +2950,11 @@ Before `db push`, require:
 npm run db:reset
 npm run db:test
 ```
+
+Also run the documented hosted read-only preflight queries for duplicate
+farmer/plot/Jakarta-date attendance and completed legacy tasks without evidence.
+Export the returned IDs to the deployment record. Resolve attendance duplicates
+before push; keep legacy completed tasks as explicitly grandfathered history.
 
 - [ ] **Step 3: Document the Cron job**
 
