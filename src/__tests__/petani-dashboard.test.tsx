@@ -82,6 +82,10 @@ jest.mock('@/services/attendance', () => ({
   fetchFarmerAttendanceForDate: jest.fn(),
 }));
 
+jest.mock('@/services/weather', () => ({
+  fetchLatestWeatherForPlots: jest.fn(),
+}));
+
 jest.mock('@/services/location', () => ({
   requestCurrentLocation: jest.fn(),
   openLocationSettings: jest.fn(),
@@ -105,6 +109,9 @@ const taskMocks = jest.requireMock('@/services/tasks') as {
 const attendanceMocks = jest.requireMock('@/services/attendance') as {
   checkInIfInsideRadius: jest.Mock;
   fetchFarmerAttendanceForDate: jest.Mock;
+};
+const weatherMocks = jest.requireMock('@/services/weather') as {
+  fetchLatestWeatherForPlots: jest.Mock;
 };
 const locationMocks = jest.requireMock('@/services/location') as {
   requestCurrentLocation: jest.Mock;
@@ -225,6 +232,18 @@ describe('PetaniDashboard', () => {
       attendance: null,
     });
     attendanceMocks.fetchFarmerAttendanceForDate.mockResolvedValue(null);
+    weatherMocks.fetchLatestWeatherForPlots.mockResolvedValue([{
+      plotId: nearPlot.id,
+      plotName: nearPlot.namaLahan,
+      observedAt: '2026-07-30T00:00:00.000Z',
+      description: 'cerah berawan',
+      temperatureC: 29,
+      humidityPercent: 78,
+      rainMm: 0,
+      forecastMinTemperatureC: 24,
+      forecastMaxTemperatureC: 32,
+      forecastMaxRainProbability: 0.35,
+    }]);
   });
 
   test('loads assigned data without requesting GPS until the explicit action', async () => {
@@ -238,6 +257,16 @@ describe('PetaniDashboard', () => {
     expect(
       attendanceMocks.fetchFarmerAttendanceForDate
     ).toHaveBeenCalledWith('farmer-1', '2026-07-30');
+    expect(weatherMocks.fetchLatestWeatherForPlots).toHaveBeenCalledWith([
+      nearPlot.id,
+    ]);
+    expect(screen.getByText('Cuaca Lahan')).toBeOnTheScreen();
+    expect(screen.getByText('Sawah Dekat')).toBeOnTheScreen();
+    expect(screen.getByText('29°C sekarang · cerah berawan')).toBeOnTheScreen();
+    expect(screen.getByText('Update 07:00 WIB')).toBeOnTheScreen();
+    expect(
+      screen.getByText('Ke depan 24–32°C · peluang hujan 35%')
+    ).toBeOnTheScreen();
     expect(screen.getByText('Belum absen')).toBeOnTheScreen();
     expect(locationMocks.requestCurrentLocation).not.toHaveBeenCalled();
     expect(attendanceMocks.checkInIfInsideRadius).not.toHaveBeenCalled();

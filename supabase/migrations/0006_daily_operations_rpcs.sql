@@ -213,7 +213,7 @@ begin
   end if;
 
   requested_count := pg_catalog.jsonb_array_length(p_drafts);
-  if requested_count > 5 then
+  if requested_count < 1 or requested_count > 5 then
     raise exception 'AI_DRAFT_LIMIT';
   end if;
 

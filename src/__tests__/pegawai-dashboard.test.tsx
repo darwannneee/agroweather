@@ -133,6 +133,19 @@ function dailyOperations(
       skippedCount: 1,
       failedCount: 1,
     },
+    weather: [{
+      plotId: 'plot-1',
+      plotName: 'Sawah Timur',
+      observedAt: '2026-07-30T00:00:00.000Z',
+      description: 'hujan ringan',
+      temperatureC: 26.5,
+      humidityPercent: 82,
+      windSpeedMps: 0,
+      rainMm: 0.4,
+      forecastMinTemperatureC: 25,
+      forecastMaxTemperatureC: 31,
+      forecastMaxRainProbability: 0.7,
+    }],
     ...overrides,
   };
 }
@@ -184,6 +197,13 @@ describe('PegawaiDashboard', () => {
     expect(screen.getByText('4 Task hari ini')).toBeOnTheScreen();
     expect(screen.getByText('2 Draft AI menunggu')).toBeOnTheScreen();
     expect(screen.getByText('2 peringatan')).toBeOnTheScreen();
+    expect(screen.getByText('Cuaca Lahan')).toBeOnTheScreen();
+    expect(screen.getByText('Sawah Timur')).toBeOnTheScreen();
+    expect(screen.getByText('26.5°C sekarang · hujan ringan')).toBeOnTheScreen();
+    expect(screen.getByText('Update 07:00 WIB')).toBeOnTheScreen();
+    expect(
+      screen.getByText('Ke depan 25–31°C · peluang hujan 70%')
+    ).toBeOnTheScreen();
     expect(screen.getByText('Pagi, Rina')).toBeOnTheScreen();
     expect(operationsMocks.fetchDailyOperations).toHaveBeenCalledWith(
       '2026-07-30'

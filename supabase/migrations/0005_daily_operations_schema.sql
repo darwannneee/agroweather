@@ -75,7 +75,7 @@ create table public.ai_generation_targets (
       )
       and pg_catalog.jsonb_typeof(request_payload -> 'drafts') = 'array'
       and pg_catalog.jsonb_array_length(request_payload -> 'drafts')
-        between 0 and 5
+        between 1 and 5
     )
     or (
       status <> 'succeeded'

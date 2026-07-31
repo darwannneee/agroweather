@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { RoleGuard } from '@/components/domain/role-guard';
 import { LocationActionCard } from '@/components/domain/location-action-card';
 import { TaskCard, type TaskCardState } from '@/components/domain/task-card';
+import { WeatherSummaryCard } from '@/components/domain/weather-summary-card';
 import { AppButton } from '@/components/ui/app-button';
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
@@ -20,6 +21,7 @@ import {
 } from '@/lib/daily-operations';
 import type {
   AttendanceRecord,
+  DashboardWeatherSummary,
   FarmPlot,
   FarmTask,
 } from '@/lib/farm-types';
@@ -42,6 +44,7 @@ import {
 } from '@/services/location';
 import { fetchAssignedPlots } from '@/services/plots';
 import { fetchFarmerTasks } from '@/services/tasks';
+import { fetchLatestWeatherForPlots } from '@/services/weather';
 
 type AttendanceOutcome =
   | { kind: 'no-active-plot' }
@@ -145,6 +148,7 @@ export function PetaniDashboard() {
   const farmerId = profile?.id;
   const [plots, setPlots] = useState<FarmPlot[]>([]);
   const [tasks, setTasks] = useState<FarmTask[]>([]);
+  const [weather, setWeather] = useState<DashboardWeatherSummary[]>([]);
   const [attendance, setAttendance] =
     useState<AttendanceRecord | null>(null);
   const [validatedReading, setValidatedReading] =
@@ -170,6 +174,7 @@ export function PetaniDashboard() {
       if (requestVersion.current === version) {
         setPlots([]);
         setTasks([]);
+        setWeather([]);
         setAttendance(null);
         setLoading(false);
       }
@@ -183,6 +188,9 @@ export function PetaniDashboard() {
         fetchFarmerTasks(farmerId, date),
         fetchFarmerAttendanceForDate(farmerId, date),
       ]);
+      const nextWeather = await fetchLatestWeatherForPlots(
+        nextPlots.map((plot) => plot.id)
+      );
       if (requestVersion.current === version) {
         setPlots(nextPlots);
         setTasks(
@@ -190,6 +198,7 @@ export function PetaniDashboard() {
             nextTasks.filter((task) => task.scheduledFor === date)
           )
         );
+        setWeather(nextWeather);
         setAttendance(nextAttendance);
       }
     } catch {
@@ -513,6 +522,8 @@ export function PetaniDashboard() {
               </AppText>
             </SurfaceCard>
           </View>
+
+          <WeatherSummaryCard weather={weather} />
 
           <View style={styles.tasks}>
             <AppText variant="title">Task Hari Ini</AppText>

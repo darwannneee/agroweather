@@ -266,7 +266,7 @@ test('invalid model output fails only that plot and finishes a partial run', asy
   );
 });
 
-test('zero-task model response still replaces pending drafts', async () => {
+test('zero-task model response is rejected before replacing pending drafts', async () => {
   const deps = dependencies({
     generateDrafts: jest.fn().mockResolvedValue({
       summary: 'Tidak ada pekerjaan aman hari ini.',
@@ -277,15 +277,13 @@ test('zero-task model response still replaces pending drafts', async () => {
 
   const result = await generateDailyTasks(manualRequest, deps);
 
-  expect(deps.replaceDrafts).toHaveBeenCalledWith(
-    expect.objectContaining({
-      summary: 'Tidak ada pekerjaan aman hari ini.',
-      tasks: [],
-    }),
-  );
-  expect(result.successCount).toBe(1);
+  expect(deps.replaceDrafts).not.toHaveBeenCalled();
+  expect(result.successCount).toBe(0);
   expect(result).toMatchObject({
+    status: 'failed',
+    failedCount: 1,
     draftCount: 0,
+    warnings: [{ plotId: plot.id, code: 'invalid_model_output' }],
   });
 });
 

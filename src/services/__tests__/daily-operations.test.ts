@@ -106,6 +106,25 @@ test('aggregates every farmer with first valid attendance and daily tasks', asyn
     },
     error: null,
   });
+  const weather = query({
+    data: [{
+      lahan_id: 'plot-1',
+      observed_at: '2026-07-30T00:00:00.000Z',
+      current_data: {
+        description: 'hujan ringan',
+        temperatureC: 26.5,
+        humidityPercent: 82,
+        rainMm: 0.4,
+      },
+      forecast_data: [{
+        minTemperatureC: 25,
+        maxTemperatureC: 31,
+        rainProbability: 0.7,
+      }],
+      lahan: { nama_lahan: 'Sawah Utara' },
+    }],
+    error: null,
+  });
   const queues: Record<string, any[]> = {
     users: [farmers],
     absensi: [attendance],
@@ -113,6 +132,7 @@ test('aggregates every farmer with first valid attendance and daily tasks', asyn
     task_evidence: [evidence],
     ai_task_drafts: [drafts],
     ai_generation_runs: [generation],
+    weather_snapshots: [weather],
   };
   const client = {
     from: jest.fn((table: string) => queues[table].shift()),
@@ -156,6 +176,14 @@ test('aggregates every farmer with first valid attendance and daily tasks', asyn
     skippedCount: 1,
     failedCount: 1,
   });
+  expect(result.weather).toEqual([expect.objectContaining({
+    plotId: 'plot-1',
+    plotName: 'Sawah Utara',
+    temperatureC: 26.5,
+    forecastMinTemperatureC: 25,
+    forecastMaxTemperatureC: 31,
+    forecastMaxRainProbability: 0.7,
+  })]);
   expect(attendance.eq).toHaveBeenCalledWith(
     'attendance_date',
     '2026-07-30',
@@ -198,6 +226,7 @@ test('fails the task section when a required display name is missing', async () 
     task_evidence: [query({ data: [], error: null })],
     ai_task_drafts: [query({ data: null, error: null, count: 0 })],
     ai_generation_runs: [query({ data: null, error: null })],
+    weather_snapshots: [query({ data: [], error: null })],
   };
   const client = {
     from: jest.fn((table: string) => queues[table].shift()),

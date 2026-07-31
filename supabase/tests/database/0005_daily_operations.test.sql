@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(219);
+select plan(221);
 
 select has_table('public', 'weather_snapshots', 'weather snapshots exist');
 select has_table('public', 'ai_generation_runs', 'generation runs exist');
@@ -807,6 +807,23 @@ select throws_ok(
   'P0001',
   'AI_DRAFT_LIMIT',
   'generation rejects more than five drafts'
+);
+
+select throws_ok(
+  $$
+    select public.replace_ai_task_drafts(
+      '40000000-0000-0000-0000-000000000002',
+      '20000000-0000-0000-0000-000000000001',
+      (now() at time zone 'Asia/Jakarta')::date,
+      '30000000-0000-0000-0000-000000000001',
+      'test/model',
+      'Tidak ada draft',
+      '[]'::jsonb
+    )
+  $$,
+  'P0001',
+  'AI_DRAFT_LIMIT',
+  'generation rejects empty draft output'
 );
 
 select lives_ok(
@@ -2715,15 +2732,19 @@ select ok(
   'farmer reads own evidence and no foreign evidence'
 );
 select is(
+  (select array_agg(lahan_id order by lahan_id) from public.weather_snapshots),
+  array['20000000-0000-0000-0000-000000000001'::uuid],
+  'farmer reads weather snapshots only for assigned plots'
+);
+select is(
   (
     select
-      (select count(*) from public.weather_snapshots)
-      + (select count(*) from public.ai_generation_runs)
+      (select count(*) from public.ai_generation_runs)
       + (select count(*) from public.ai_generation_targets)
       + (select count(*) from public.ai_task_drafts)
   ),
   0::bigint,
-  'farmer cannot read raw weather or AI operations'
+  'farmer cannot read AI operations'
 );
 select is(
   (select array_agg(lahan_id order by lahan_id) from public.rekomendasi_cuaca),

@@ -47,6 +47,7 @@ jest.mock('@/services/evidence', () => ({}));
 jest.mock('@/services/location', () => ({}));
 jest.mock('@/services/plots', () => ({}));
 jest.mock('@/services/tasks', () => ({}));
+jest.mock('@/services/weather', () => ({}));
 
 type GuardElement = ReactElement<{
   requiredRole: UserRole;

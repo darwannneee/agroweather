@@ -72,7 +72,7 @@ describe('buildOpenRouterRequest', () => {
             properties: {
               tasks: {
                 type: 'array',
-                minItems: 0,
+                minItems: 1,
                 maxItems: 5,
                 items: {
                   type: 'object',
@@ -103,7 +103,8 @@ describe('buildOpenRouterRequest', () => {
     const systemPrompt = request.messages[0].content;
 
     expect(systemPrompt).toMatch(/Bahasa Indonesia/i);
-    expect(systemPrompt).toMatch(/nol tugas/i);
+    expect(systemPrompt).toMatch(/1 sampai 5 tugas/i);
+    expect(systemPrompt).not.toMatch(/nol tugas/i);
     expect(systemPrompt).toMatch(/dosis kimia/i);
     expect(systemPrompt).toMatch(/data tidak tepercaya/i);
     expect(systemPrompt).toMatch(/review internal/i);
@@ -147,16 +148,15 @@ describe('buildOpenRouterRequest', () => {
 });
 
 describe('parseOpenRouterDrafts', () => {
-  test('accepts zero tasks', () => {
-    expect(
+  test('rejects zero tasks', () => {
+    expect(() =>
       parseOpenRouterDrafts(JSON.stringify({
         summary: 'Tidak ada pekerjaan mendesak.',
         tasks: [],
       })),
-    ).toEqual({
-      summary: 'Tidak ada pekerjaan mendesak.',
-      tasks: [],
-    });
+    ).toThrow(expect.objectContaining({
+      code: 'OPENROUTER_INVALID_STRUCTURED_OUTPUT',
+    }));
   });
 
   test('validates and maps provider field names to database field names', () => {

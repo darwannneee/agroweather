@@ -323,6 +323,17 @@ async function processPlot(
     });
   }
 
+  if (generated.tasks.length < 1) {
+    return recordFailure(dependencies, {
+      runId,
+      plotId: plot.id,
+      scheduledFor: request.scheduledFor,
+      status: 'failed',
+      code: 'invalid_model_output',
+      weatherSnapshotId,
+    });
+  }
+
   try {
     const persisted = await dependencies.replaceDrafts({
       runId,

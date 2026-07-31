@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import type { Href } from 'expo-router';
 
 import { RoleGuard } from '@/components/domain/role-guard';
+import { WeatherSummaryCard } from '@/components/domain/weather-summary-card';
 import { AppButton } from '@/components/ui/app-button';
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
@@ -180,6 +181,8 @@ export function PegawaiDashboard() {
               onPress={() => router.push('/(app)/ai-tasks' as Href)}
             />
           </SurfaceCard>
+
+          <WeatherSummaryCard weather={operations?.weather ?? []} />
 
           <SurfaceCard>
             <AppText variant="subtitle">Operasional Harian</AppText>

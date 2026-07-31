@@ -110,6 +110,11 @@ export type DraftWeatherSummary = {
   forecastMaxRainProbability: number | null;
 };
 
+export type DashboardWeatherSummary = DraftWeatherSummary & {
+  plotId: string;
+  plotName: string;
+};
+
 export type AiTaskDraft = {
   id: string;
   plotId: string;

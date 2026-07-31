@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type {
   AttendanceRecord,
+  DashboardWeatherSummary,
   GenerationStatus,
   OperationalTask,
 } from '@/lib/farm-types';
@@ -18,6 +19,7 @@ import {
   type LatestTaskEvidenceRow,
   type TaskRow,
 } from './tasks';
+import { fetchLatestWeatherSummaries } from './weather';
 
 export type DailyOperations = {
   scheduledFor: string;
@@ -28,6 +30,7 @@ export type DailyOperations = {
     record: AttendanceRecord | null;
   }[];
   tasks: OperationalTask[];
+  weather?: DashboardWeatherSummary[];
   pendingDraftCount: number;
   lastGeneration: {
     status: GenerationStatus;
@@ -103,6 +106,7 @@ export async function fetchDailyOperations(
     taskResult,
     draftResult,
     generationResult,
+    weather,
   ] = await Promise.all([
     client
       .from('users')
@@ -134,6 +138,7 @@ export async function fetchDailyOperations(
       .order('started_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    fetchLatestWeatherSummaries({ client, limit: 50 }),
   ]);
 
   if (farmerResult.error) throw farmerResult.error;
@@ -201,6 +206,7 @@ export async function fetchDailyOperations(
     scheduledFor,
     attendance,
     tasks,
+    weather,
     pendingDraftCount: safeCount(draftResult.count),
     lastGeneration: mapLastGeneration(
       generationResult.data as unknown as GenerationRow | null
