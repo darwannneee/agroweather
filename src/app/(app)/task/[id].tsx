@@ -600,7 +600,9 @@ export function TaskDetailScreen() {
                 Task selesai
               </AppText>
               <AppText variant="small">
-                Bukti telah diterima internal. Riwayat tetap dapat dilihat.
+                {latestAttempt?.status === 'accepted'
+                  ? 'Bukti telah diterima internal. Riwayat tetap dapat dilihat.'
+                  : 'Diselesaikan sebelum alur review bukti diberlakukan.'}
               </AppText>
             </SurfaceCard>
           ) : pendingReview ? (

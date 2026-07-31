@@ -562,6 +562,27 @@ describe('TaskDetailScreen', () => {
     ).toBeNull();
   });
 
+  test('renders a grandfathered completed task without claiming evidence was accepted', async () => {
+    evidenceMocks.fetchTaskEvidenceAttempts.mockResolvedValue([]);
+    taskMocks.fetchTaskDetail.mockResolvedValue({
+      ...task,
+      status: 'selesai',
+      latestEvidence: null,
+    });
+    render(<TaskDetailScreen />);
+
+    expect(await screen.findByText('Task selesai')).toBeOnTheScreen();
+    expect(
+      screen.getByText('Diselesaikan sebelum alur review bukti diberlakukan.')
+    ).toBeOnTheScreen();
+    expect(screen.queryByText(/Bukti telah diterima internal/i)).toBeNull();
+    expect(screen.queryByText('Riwayat Bukti')).toBeNull();
+    expect(screen.queryByText('Pilih Foto Bukti')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Periksa Lokasi Task' })
+    ).toBeNull();
+  });
+
   test.each(['missing accuracy', 'a stale timestamp'] as const)(
     'blocks an unlock reading with %s before the geofence check',
     async (issue) => {
