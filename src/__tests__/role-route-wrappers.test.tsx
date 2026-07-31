@@ -29,6 +29,7 @@ jest.mock('@/services/auth-context', () => ({
 
 jest.mock('@/services/auth', () => ({}));
 jest.mock('@/services/attendance', () => ({}));
+jest.mock('@/services/daily-operations', () => ({}));
 jest.mock('@/services/evidence', () => ({}));
 jest.mock('@/services/location', () => ({}));
 jest.mock('@/services/plots', () => ({}));
