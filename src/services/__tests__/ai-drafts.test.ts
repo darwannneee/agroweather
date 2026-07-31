@@ -138,6 +138,53 @@ test('invokes generation and maps the stable result', async () => {
   });
 });
 
+test('logs safe diagnostics when generation invoke fails before a run exists', async () => {
+  const error = Object.assign(new Error('Edge Function returned 500'), {
+    context: {
+      status: 500,
+      json: jest.fn().mockResolvedValue({
+        error: 'Generate task belum berhasil. Coba lagi.',
+        code: 'GENERATION_FAILED',
+        providerSecret: 'must-not-log',
+      }),
+    },
+  });
+  const invoke = jest.fn().mockResolvedValue({
+    data: null,
+    error,
+  });
+  const consoleSpy = jest
+    .spyOn(console, 'error')
+    .mockImplementation(() => undefined);
+  const client = {
+    functions: { invoke },
+  } as unknown as SupabaseClient;
+
+  try {
+    await expect(invokeAiGeneration(['plot-1'], client)).rejects.toThrow(
+      'Edge Function returned 500'
+    );
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[AgroWeather] AI generation invoke failed',
+      expect.objectContaining({
+        stage: 'function_invoke',
+        functionName: 'generate-daily-tasks',
+        plotCount: 1,
+        status: 500,
+        response: {
+          error: 'Generate task belum berhasil. Coba lagi.',
+          code: 'GENERATION_FAILED',
+        },
+      })
+    );
+    expect(JSON.stringify(consoleSpy.mock.calls)).not.toContain(
+      'must-not-log'
+    );
+  } finally {
+    consoleSpy.mockRestore();
+  }
+});
+
 test('fetches latest generation log with per-target draft counts', async () => {
   const runQuery = {
     select: jest.fn(),

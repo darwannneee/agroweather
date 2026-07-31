@@ -108,6 +108,7 @@ const GENERATION_RUN_SELECT =
   'id,trigger,scheduled_for,status,model,plot_count,success_count,skipped_count,failed_count,warning_summary,started_at,completed_at';
 const GENERATION_TARGET_SELECT =
   'id,run_id,lahan_id,scheduled_for,status,draft_count,error_code,result_summary,is_current,version,created_at,completed_at,lahan!ai_generation_targets_lahan_id_fkey(nama_lahan)';
+const GENERATE_FUNCTION_NAME = 'generate-daily-tasks';
 
 const warningCodes = new Set<GenerationWarning['code']>([
   'plot_unassigned',
@@ -159,6 +160,90 @@ function safeText(value: unknown, maximum: number): string | null {
   return typeof value === 'string' && value.trim()
     ? value.trim().slice(0, maximum)
     : null;
+}
+
+function safeErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message.slice(0, 500);
+  if (typeof error === 'string') return error.slice(0, 500);
+  return 'Unknown error';
+}
+
+function safeErrorName(error: unknown): string | null {
+  return error instanceof Error ? error.name.slice(0, 120) : null;
+}
+
+function safeErrorCode(error: unknown): string | null {
+  const code = asRecord(error).code;
+  return typeof code === 'string' && code.trim()
+    ? code.trim().slice(0, 120)
+    : null;
+}
+
+function safeResponsePayload(
+  value: unknown
+): Record<string, string | number | boolean> | null {
+  const record = asRecord(value);
+  const allowedKeys = ['error', 'code', 'message', 'status'] as const;
+  const result: Record<string, string | number | boolean> = {};
+  for (const key of allowedKeys) {
+    const candidate = record[key];
+    if (
+      typeof candidate === 'string'
+      || typeof candidate === 'number'
+      || typeof candidate === 'boolean'
+    ) {
+      result[key] =
+        typeof candidate === 'string' ? candidate.slice(0, 500) : candidate;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
+async function readSafeFunctionResponse(error: unknown): Promise<{
+  status: number | null;
+  response: Record<string, string | number | boolean> | null;
+}> {
+  const response = asRecord(asRecord(error).context);
+  const status = typeof response.status === 'number'
+    && Number.isFinite(response.status)
+    ? response.status
+    : null;
+  const reader = typeof response.clone === 'function'
+    ? asRecord(response.clone())
+    : response;
+
+  if (typeof reader.json !== 'function') {
+    return { status, response: null };
+  }
+
+  try {
+    return {
+      status,
+      response: safeResponsePayload(await reader.json()),
+    };
+  } catch {
+    return { status, response: null };
+  }
+}
+
+async function logGenerationInvokeFailure(input: {
+  stage: 'function_invoke' | 'response_mapping';
+  plotCount: number;
+  error: unknown;
+  responseData?: unknown;
+}) {
+  const functionResponse = await readSafeFunctionResponse(input.error);
+  console.error('[AgroWeather] AI generation invoke failed', {
+    stage: input.stage,
+    functionName: GENERATE_FUNCTION_NAME,
+    plotCount: input.plotCount,
+    errorName: safeErrorName(input.error),
+    message: safeErrorMessage(input.error),
+    code: safeErrorCode(input.error),
+    status: functionResponse.status,
+    response: functionResponse.response,
+    responseData: safeResponsePayload(input.responseData),
+  });
 }
 
 function relationName(
@@ -413,13 +498,43 @@ export async function invokeAiGeneration(
   plotIds: string[],
   client: SupabaseClient = supabase
 ): Promise<GenerationInvocationResult> {
-  const { data, error } = await client.functions.invoke(
-    'generate-daily-tasks',
-    { body: { plotIds } }
-  );
-  if (error) throw error;
+  const plotCount = plotIds.length;
+  let result: Awaited<ReturnType<SupabaseClient['functions']['invoke']>>;
+  try {
+    result = await client.functions.invoke(
+      GENERATE_FUNCTION_NAME,
+      { body: { plotIds } }
+    );
+  } catch (error) {
+    await logGenerationInvokeFailure({
+      stage: 'function_invoke',
+      plotCount,
+      error,
+    });
+    throw error;
+  }
 
-  return mapGenerationResult(data);
+  if (result.error) {
+    await logGenerationInvokeFailure({
+      stage: 'function_invoke',
+      plotCount,
+      error: result.error,
+      responseData: result.data,
+    });
+    throw result.error;
+  }
+
+  try {
+    return mapGenerationResult(result.data);
+  } catch (error) {
+    await logGenerationInvokeFailure({
+      stage: 'response_mapping',
+      plotCount,
+      error,
+      responseData: result.data,
+    });
+    throw error;
+  }
 }
 
 export async function fetchLatestAiGenerationLog(input: {

@@ -480,6 +480,41 @@ describe('AiTasksScreen', () => {
     ).toBeOnTheScreen();
   });
 
+  test('logs the UI boundary when generation fails before run log exists', async () => {
+    const error = new Error('network unavailable');
+    const consoleSpy = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    draftMocks.invokeAiGeneration.mockRejectedValue(error);
+    await renderLoaded();
+    selectPlot();
+
+    try {
+      fireEvent.press(
+        screen.getByRole('button', { name: 'Generate Task AI' })
+      );
+
+      expect(
+        await screen.findByText(
+          'Generasi Task AI belum dapat dijalankan. Silakan coba lagi.'
+        )
+      ).toBeOnTheScreen();
+      expect(
+        screen.getByText('Request generate gagal sebelum log run tersimpan.')
+      ).toBeOnTheScreen();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '[AgroWeather] AI generation screen failed',
+        expect.objectContaining({
+          stage: 'screen_generate',
+          plotCount: 1,
+          message: 'network unavailable',
+        })
+      );
+    } finally {
+      consoleSpy.mockRestore();
+    }
+  });
+
   test('reloads pending drafts after generation completes', async () => {
     draftMocks.fetchAiDrafts
       .mockResolvedValueOnce(drafts)

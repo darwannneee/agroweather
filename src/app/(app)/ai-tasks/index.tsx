@@ -123,6 +123,21 @@ function targetStatusCopy(target: AiGenerationTargetLog): string {
   return `${target.plotName}: ${status}, ${target.draftCount} draft.${error}${summary}`;
 }
 
+function generationScreenErrorLog(
+  error: unknown,
+  plotCount: number
+): Record<string, unknown> {
+  return {
+    stage: 'screen_generate',
+    plotCount,
+    message: error instanceof Error
+      ? error.message.slice(0, 500)
+      : typeof error === 'string'
+      ? error.slice(0, 500)
+      : 'Unknown error',
+  };
+}
+
 function SelectChip({
   label,
   accessibilityLabel,
@@ -339,7 +354,11 @@ export function AiTasksScreen() {
       );
       await reloadDrafts();
       void loadGenerationLog({ preserveExistingOnEmpty: true });
-    } catch {
+    } catch (error) {
+      console.error(
+        '[AgroWeather] AI generation screen failed',
+        generationScreenErrorLog(error, selectedPlotIds.size)
+      );
       setGenerationFeedback(
         'Generasi Task AI belum dapat dijalankan. Silakan coba lagi.'
       );
