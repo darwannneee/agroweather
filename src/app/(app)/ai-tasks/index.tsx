@@ -125,6 +125,8 @@ export function AiTasksScreen() {
   const [approvalFeedback, setApprovalFeedback] = useState<string | null>(
     null
   );
+  const [approvalRefreshRequired, setApprovalRefreshRequired] =
+    useState(false);
   const requestVersion = useRef(0);
   const generationActive = useRef(false);
   const approvalActive = useRef(false);
@@ -194,23 +196,24 @@ export function AiTasksScreen() {
     }
   }, [applyDrafts, scheduledFor]);
 
-  const reloadDrafts = useCallback(async () => {
+  const reloadDrafts = useCallback(async (): Promise<boolean> => {
     const version = ++requestVersion.current;
     try {
       const nextDrafts = await fetchAiDrafts({
         scheduledFor,
         status: 'pending',
       });
-      if (requestVersion.current === version) {
-        applyDrafts(nextDrafts);
-        setLoadError(null);
-      }
+      if (requestVersion.current !== version) return false;
+      applyDrafts(nextDrafts);
+      setLoadError(null);
+      return true;
     } catch {
       if (requestVersion.current === version) {
         setLoadError(
           'Daftar draft terbaru belum dapat dimuat. Silakan coba lagi.'
         );
       }
+      return false;
     }
   }, [applyDrafts, scheduledFor]);
 
@@ -260,7 +263,8 @@ export function AiTasksScreen() {
     if (
       ids.length === 0 ||
       approvalActive.current ||
-      generationActive.current
+      generationActive.current ||
+      approvalRefreshRequired
     ) {
       return;
     }
@@ -271,15 +275,32 @@ export function AiTasksScreen() {
     try {
       await approveAiDrafts(ids);
       setSelectedDraftIds(new Set());
-      setApprovalFeedback(
-        `${ids.length} draft berhasil disetujui menjadi task.`
-      );
-      await reloadDrafts();
+      const refreshed = await reloadDrafts();
+      if (refreshed) {
+        setApprovalRefreshRequired(false);
+        setApprovalFeedback(
+          `${ids.length} draft berhasil disetujui menjadi task.`
+        );
+      } else {
+        setApprovalRefreshRequired(true);
+        setApprovalFeedback(
+          `${ids.length} draft berhasil disetujui, tetapi daftar terbaru belum dapat dimuat. Muat ulang sebelum melanjutkan.`
+        );
+      }
     } catch {
-      setApprovalFeedback(
-        'Draft berubah atau belum dapat disetujui. Daftar sudah dimuat ulang.'
-      );
-      await reloadDrafts();
+      setSelectedDraftIds(new Set());
+      setApprovalRefreshRequired(true);
+      const refreshed = await reloadDrafts();
+      if (refreshed) {
+        setApprovalRefreshRequired(false);
+        setApprovalFeedback(
+          'Draft berubah atau belum dapat disetujui. Daftar terbaru sudah dimuat.'
+        );
+      } else {
+        setApprovalFeedback(
+          'Draft berubah atau belum dapat disetujui. Daftar terbaru belum dapat dimuat. Muat ulang sebelum mencoba lagi.'
+        );
+      }
     } finally {
       approvalActive.current = false;
       setApprovalPending(false);
@@ -290,7 +311,8 @@ export function AiTasksScreen() {
     if (
       selectedDraftIds.size === 0 ||
       approvalActive.current ||
-      generationActive.current
+      generationActive.current ||
+      approvalRefreshRequired
     ) {
       return;
     }
@@ -310,7 +332,23 @@ export function AiTasksScreen() {
     );
   }
 
+  async function handleDraftRefresh() {
+    if (approvalActive.current || generationActive.current) return;
+
+    approvalActive.current = true;
+    setApprovalPending(true);
+    const refreshed = await reloadDrafts();
+    if (refreshed) {
+      setApprovalRefreshRequired(false);
+      setApprovalFeedback('Daftar draft terbaru berhasil dimuat.');
+    }
+    approvalActive.current = false;
+    setApprovalPending(false);
+  }
+
   const allActionsBlocked = generationPending || approvalPending;
+  const draftApprovalBlocked =
+    allActionsBlocked || approvalRefreshRequired;
 
   return (
     <AppScreen>
@@ -483,7 +521,9 @@ export function AiTasksScreen() {
               variant="forest"
               loading={approvalPending}
               disabled={
-                selectedDraftIds.size === 0 || generationPending
+                selectedDraftIds.size === 0 ||
+                generationPending ||
+                approvalRefreshRequired
               }
               onPress={confirmBulkApproval}
             />
@@ -501,6 +541,22 @@ export function AiTasksScreen() {
             >
               {approvalFeedback}
             </AppText>
+          ) : null}
+
+          {approvalRefreshRequired ? (
+            <SurfaceCard>
+              <AppText variant="small" color={Colors.dangerText}>
+                Draft yang tampil mungkin sudah berubah. Muat ulang daftar
+                sebelum memilih atau menyetujui draft.
+              </AppText>
+              <AppButton
+                label="Muat Ulang Draft"
+                variant="secondary"
+                loading={approvalPending}
+                disabled={generationPending}
+                onPress={() => void handleDraftRefresh()}
+              />
+            </SurfaceCard>
           ) : null}
 
           {visibleDrafts.length === 0 ? (
@@ -525,7 +581,7 @@ export function AiTasksScreen() {
                     label={selected ? 'Dipilih' : 'Pilih draft'}
                     accessibilityLabel={`Pilih draft ${draft.title}`}
                     selected={selected}
-                    disabled={allActionsBlocked}
+                    disabled={draftApprovalBlocked}
                     onPress={() =>
                       setSelectedDraftIds((current) =>
                         toggleSet(current, draft.id)

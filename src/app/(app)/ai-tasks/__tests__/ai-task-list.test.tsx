@@ -480,11 +480,105 @@ describe('AiTasksScreen', () => {
 
     expect(
       await screen.findByText(
-        'Draft berubah atau belum dapat disetujui. Daftar sudah dimuat ulang.'
+        'Draft berubah atau belum dapat disetujui. Daftar terbaru sudah dimuat.'
       )
     ).toBeOnTheScreen();
     expect(screen.queryByText(rawError)).toBeNull();
     expect(draftMocks.fetchAiDrafts).toHaveBeenCalledTimes(2);
+  });
+
+  test('blocks stale draft approval when the post-failure refresh also fails', async () => {
+    const rawApprovalError = 'draft version conflict: private database detail';
+    const rawRefreshError = 'network provider detail';
+    draftMocks.approveAiDrafts.mockRejectedValue(
+      new Error(rawApprovalError)
+    );
+    draftMocks.fetchAiDrafts
+      .mockResolvedValueOnce(drafts)
+      .mockRejectedValueOnce(new Error(rawRefreshError));
+    await renderLoaded();
+
+    fireEvent.press(
+      screen.getByRole('button', { name: 'Pilih draft Periksa irigasi utara' })
+    );
+    fireEvent.press(
+      screen.getByRole('button', { name: 'Setujui Terpilih' })
+    );
+    const confirm = alertSpy.mock.calls
+      .at(-1)?.[2]
+      ?.find((action) => action.text === 'Setujui');
+    act(() => {
+      confirm?.onPress?.();
+    });
+
+    expect(
+      await screen.findByText(
+        'Draft berubah atau belum dapat disetujui. Daftar terbaru belum dapat dimuat. Muat ulang sebelum mencoba lagi.'
+      )
+    ).toBeOnTheScreen();
+    expect(screen.queryByText(rawApprovalError)).toBeNull();
+    expect(screen.queryByText(rawRefreshError)).toBeNull();
+    expect(
+      screen.getByRole('button', {
+        name: 'Pilih draft Periksa irigasi utara',
+      })
+    ).toHaveProp(
+      'accessibilityState',
+      expect.objectContaining({ selected: false, disabled: true })
+    );
+    expect(
+      screen.getByRole('button', { name: 'Setujui Terpilih' })
+    ).toHaveProp(
+      'accessibilityState',
+      expect.objectContaining({ disabled: true })
+    );
+    expect(
+      screen.getByRole('button', { name: 'Muat Ulang Draft' })
+    ).toBeOnTheScreen();
+  });
+
+  test('unlocks approval only after an explicit stale-draft refresh succeeds', async () => {
+    draftMocks.approveAiDrafts.mockRejectedValue(new Error('stale draft'));
+    draftMocks.fetchAiDrafts
+      .mockResolvedValueOnce(drafts)
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(drafts.slice(1));
+    await renderLoaded();
+
+    fireEvent.press(
+      screen.getByRole('button', { name: 'Pilih draft Periksa irigasi utara' })
+    );
+    fireEvent.press(
+      screen.getByRole('button', { name: 'Setujui Terpilih' })
+    );
+    const confirm = alertSpy.mock.calls
+      .at(-1)?.[2]
+      ?.find((action) => action.text === 'Setujui');
+    act(() => {
+      confirm?.onPress?.();
+    });
+
+    const retryButton = await screen.findByRole('button', {
+      name: 'Muat Ulang Draft',
+    });
+    fireEvent.press(retryButton);
+
+    expect(
+      await screen.findByText('Daftar draft terbaru berhasil dimuat.')
+    ).toBeOnTheScreen();
+    expect(screen.queryByText('Periksa irigasi utara')).toBeNull();
+    expect(
+      screen.getByRole('button', {
+        name: 'Pilih draft Cek pertumbuhan jagung',
+      })
+    ).toHaveProp(
+      'accessibilityState',
+      expect.objectContaining({ selected: false, disabled: false })
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Muat Ulang Draft' })
+    ).toBeNull();
+    expect(draftMocks.fetchAiDrafts).toHaveBeenCalledTimes(3);
   });
 
   test('opens a draft card on its review route', async () => {
