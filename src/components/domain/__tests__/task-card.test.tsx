@@ -41,11 +41,17 @@ describe('TaskCard', () => {
 
     fireEvent.press(screen.getByRole('button', { name: 'Buka tugas Bersihkan saluran' }));
     expect(onPress).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole('button', { name: 'Buka tugas Bersihkan saluran' })
+    ).toHaveStyle({ minHeight: 44 });
   });
 
   test.each([
+    ['not-started', 'Belum dimulai'],
     ['ready', 'Siap'],
     ['outside', 'Di luar radius'],
+    ['pending-review', 'Menunggu review'],
+    ['revision-needed', 'Perlu perbaikan'],
     ['completed', 'Selesai'],
   ] satisfies [TaskCardState, string][])('renders the %s state as %s', (state, label) => {
     render(
@@ -64,5 +70,25 @@ describe('TaskCard', () => {
     } else {
       expect(screen.queryByText('Radius lahan: 625 meter')).not.toBeOnTheScreen();
     }
+  });
+
+  test('renders priority and scheduled date from the task domain data', () => {
+    render(
+      <TaskCard
+        task={{
+          ...task,
+          priority: 'low',
+          scheduledFor: '2026-08-17',
+        }}
+        plotName="Sawah A"
+        state="not-started"
+        onPress={() => undefined}
+      />
+    );
+
+    expect(screen.getByText('Prioritas: Rendah')).toBeOnTheScreen();
+    expect(screen.getByText('Tanggal tugas: 2026-08-17')).toBeOnTheScreen();
+    expect(screen.queryByText('Prioritas: Sedang')).toBeNull();
+    expect(screen.queryByText('Tanggal tugas: 2026-07-30')).toBeNull();
   });
 });

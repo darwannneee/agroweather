@@ -6,7 +6,14 @@ import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import type { FarmTask } from '@/lib/farm-types';
 
-export type TaskCardState = 'ready' | 'check-location' | 'outside' | 'completed';
+export type TaskCardState =
+  | 'not-started'
+  | 'ready'
+  | 'check-location'
+  | 'outside'
+  | 'pending-review'
+  | 'revision-needed'
+  | 'completed';
 
 type TaskCardProps = {
   task: FarmTask;
@@ -17,10 +24,19 @@ type TaskCardProps = {
 };
 
 const taskState = {
+  'not-started': { label: 'Belum dimulai', tone: 'neutral' },
   ready: { label: 'Siap', tone: 'success' },
   'check-location': { label: 'Perlu cek lokasi', tone: 'warning' },
   outside: { label: 'Di luar radius', tone: 'danger' },
+  'pending-review': { label: 'Menunggu review', tone: 'warning' },
+  'revision-needed': { label: 'Perlu perbaikan', tone: 'danger' },
   completed: { label: 'Selesai', tone: 'neutral' },
+} as const;
+
+const priorityLabel = {
+  low: 'Rendah',
+  medium: 'Sedang',
+  high: 'Tinggi',
 } as const;
 
 export function TaskCard({ task, plotName, state, radiusM, onPress }: TaskCardProps) {
@@ -45,6 +61,12 @@ export function TaskCard({ task, plotName, state, radiusM, onPress }: TaskCardPr
           <StatusPill label={status.label} tone={status.tone} />
         </View>
 
+        <AppText variant="small">
+          Prioritas: {priorityLabel[task.priority]}
+        </AppText>
+        <AppText variant="small">
+          Tanggal tugas: {task.scheduledFor}
+        </AppText>
         {task.deadline ? (
           <AppText variant="small">Deadline: {task.deadline}</AppText>
         ) : null}
