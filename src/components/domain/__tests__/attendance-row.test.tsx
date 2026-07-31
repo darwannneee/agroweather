@@ -4,6 +4,8 @@ import type { AttendanceRecord } from '@/lib/farm-types';
 
 import { AttendanceRow } from '../attendance-row';
 
+const hiddenIcon = { includeHiddenElements: true };
+
 const record: AttendanceRecord = {
   id: 'attendance-1',
   farmerId: 'farmer-1',
@@ -30,6 +32,7 @@ describe('AttendanceRow', () => {
     );
 
     expect(screen.getByText('Budi')).toBeOnTheScreen();
+    expect(screen.getByText('✅', hiddenIcon)).toBeOnTheScreen();
     expect(screen.getByText('Sudah absen')).toBeOnTheScreen();
     expect(screen.getByText('07.05 WIB · Sawah Utara')).toBeOnTheScreen();
 
@@ -51,6 +54,7 @@ describe('AttendanceRow', () => {
     );
 
     expect(screen.getByText('Sari')).toBeOnTheScreen();
+    expect(screen.getByText('⏳', hiddenIcon)).toBeOnTheScreen();
     expect(screen.getByText('Belum absen')).toBeOnTheScreen();
     expect(
       screen.getByLabelText('Kehadiran Sari, belum absen')

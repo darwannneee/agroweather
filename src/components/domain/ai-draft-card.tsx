@@ -1,6 +1,8 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
+import { IconBadge } from '@/components/ui/icon-badge';
+import { InfoRow } from '@/components/ui/info-row';
 import { StatusPill } from '@/components/ui/status-pill';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -46,21 +48,38 @@ export function AiDraftCard({
     >
       <SurfaceCard>
         <View style={styles.header}>
-          <AppText variant="subtitle" style={styles.title}>
-            {draft.title}
-          </AppText>
+          <IconBadge icon="🤖" label={`Draft AI ${draft.title}`} tone="amber" />
+          <View style={styles.title}>
+            <AppText variant="subtitle">
+              {draft.title}
+            </AppText>
+            <AppText variant="small" color={Colors.muted}>
+              Rekomendasi operasional dari AI
+            </AppText>
+          </View>
           <StatusPill
             label={priorityStatus.label}
             tone={priorityStatus.tone}
           />
         </View>
-        <AppText variant="small">Lahan: {draft.plotName}</AppText>
-        <AppText variant="small">
-          Petani: {draft.proposedAssigneeName}
-        </AppText>
-        <AppText variant="small">
-          Tanggal tugas: {draft.scheduledFor}
-        </AppText>
+        <InfoRow
+          icon="🌾"
+          label="Lahan"
+          value={`Lahan: ${draft.plotName}`}
+          tone="forest"
+        />
+        <InfoRow
+          icon="👨‍🌾"
+          label="Petani"
+          value={`Petani: ${draft.proposedAssigneeName}`}
+          tone="sky"
+        />
+        <InfoRow
+          icon="📅"
+          label="Tanggal"
+          value={`Tanggal tugas: ${draft.scheduledFor}`}
+          tone="neutral"
+        />
         <AppText variant="small" color={Colors.muted}>
           Alasan AI: {draft.aiReason}
         </AppText>
@@ -83,9 +102,10 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: Spacing.two,
+    gap: Spacing.three,
   },
   title: {
     flex: 1,
+    gap: Spacing.one,
   },
 });

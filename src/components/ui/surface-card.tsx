@@ -14,5 +14,10 @@ const styles = StyleSheet.create({
     borderRadius: Radius.card,
     padding: Spacing.four,
     gap: Spacing.two,
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    elevation: 2,
   },
 });

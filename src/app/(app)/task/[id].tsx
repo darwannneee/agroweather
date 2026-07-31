@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 
 import { EvidenceAttemptCard } from '@/components/domain/evidence-attempt-card';
@@ -14,9 +14,11 @@ import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { FeedbackState } from '@/components/ui/feedback-state';
 import { FormField } from '@/components/ui/form-field';
+import { IconBadge } from '@/components/ui/icon-badge';
+import { InfoRow } from '@/components/ui/info-row';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
-import { Colors } from '@/constants/theme';
+import { Colors, Spacing } from '@/constants/theme';
 import { useLocationAction } from '@/hooks/use-location-action';
 import { buildMvpAnalysisSummary } from '@/lib/analysis';
 import type {
@@ -568,26 +570,60 @@ export function TaskDetailScreen() {
           />
 
           <SurfaceCard>
-            <AppText variant="subtitle">Ringkasan Task</AppText>
-            <AppText variant="small">Lahan: {plot.namaLahan}</AppText>
-            <AppText variant="small">
-              Prioritas: {priorityLabels[task.priority]}
-            </AppText>
-            <AppText variant="small">Jadwal: {task.scheduledFor}</AppText>
-            <AppText variant="small">
-              Instruksi: {task.deskripsi ?? 'Kerjakan sesuai arahan internal.'}
-            </AppText>
+            <View style={styles.cardHeader}>
+              <IconBadge icon="📝" label="Ringkasan Task" tone="forest" />
+              <View style={styles.cardCopy}>
+                <AppText variant="subtitle">Ringkasan Task</AppText>
+                <AppText variant="small" color={Colors.muted}>
+                  Instruksi kerja, jadwal, dan aturan bukti untuk task ini.
+                </AppText>
+              </View>
+            </View>
+            <InfoRow icon="🌾" label="Lahan" value={`Lahan: ${plot.namaLahan}`} />
+            <InfoRow
+              icon="🚦"
+              label="Prioritas"
+              value={`Prioritas: ${priorityLabels[task.priority]}`}
+              tone={task.priority === 'high' ? 'danger' : task.priority === 'medium' ? 'amber' : 'forest'}
+            />
+            <InfoRow
+              icon="📅"
+              label="Jadwal"
+              value={`Jadwal: ${task.scheduledFor}`}
+              tone="sky"
+            />
+            <InfoRow
+              icon="📋"
+              label="Instruksi"
+              value={`Instruksi: ${task.deskripsi ?? 'Kerjakan sesuai arahan internal.'}`}
+            />
             {task.aiReason ? (
-              <AppText variant="small">Alasan AI: {task.aiReason}</AppText>
+              <InfoRow
+                icon="🤖"
+                label="Alasan AI"
+                value={`Alasan AI: ${task.aiReason}`}
+                tone="amber"
+              />
             ) : null}
-            <AppText variant="small">
-              Bukti lokasi: {task.requiresLocation ? 'Wajib' : 'Tidak diwajibkan'}
-            </AppText>
+            <InfoRow
+              icon={task.requiresLocation ? '📍' : '📎'}
+              label="Bukti lokasi"
+              value={`Bukti lokasi: ${task.requiresLocation ? 'Wajib' : 'Tidak diwajibkan'}`}
+              tone={task.requiresLocation ? 'forest' : 'neutral'}
+            />
           </SurfaceCard>
 
           {attempts.length > 0 ? (
             <>
-              <AppText variant="title">Riwayat Bukti</AppText>
+              <View style={styles.sectionTitleRow}>
+                <IconBadge icon="📸" label="Riwayat Bukti" tone="sky" />
+                <View style={styles.cardCopy}>
+                  <AppText variant="title">Riwayat Bukti</AppText>
+                  <AppText variant="small" color={Colors.muted}>
+                    Semua bukti yang pernah dikirim untuk task ini.
+                  </AppText>
+                </View>
+              </View>
               {attempts.map((attempt) => (
                 <EvidenceAttemptCard key={attempt.id} attempt={attempt} />
               ))}
@@ -596,9 +632,17 @@ export function TaskDetailScreen() {
 
           {completed ? (
             <SurfaceCard>
-              <AppText variant="subtitle" color={Colors.successText}>
-                Task selesai
-              </AppText>
+              <View style={styles.cardHeader}>
+                <IconBadge icon="✅" label="Task selesai" />
+                <View style={styles.cardCopy}>
+                  <AppText variant="subtitle" color={Colors.successText}>
+                    Task selesai
+                  </AppText>
+                  <AppText variant="small" color={Colors.muted}>
+                    Status akhir sudah tersimpan.
+                  </AppText>
+                </View>
+              </View>
               <AppText variant="small">
                 {latestAttempt?.status === 'accepted'
                   ? 'Bukti telah diterima internal. Riwayat tetap dapat dilihat.'
@@ -607,7 +651,15 @@ export function TaskDetailScreen() {
             </SurfaceCard>
           ) : pendingReview ? (
             <SurfaceCard>
-              <AppText variant="subtitle">Menunggu review internal</AppText>
+              <View style={styles.cardHeader}>
+                <IconBadge icon="⏳" label="Menunggu review internal" tone="amber" />
+                <View style={styles.cardCopy}>
+                  <AppText variant="subtitle">Menunggu review internal</AppText>
+                  <AppText variant="small" color={Colors.muted}>
+                    Bukti terbaru sudah terkirim.
+                  </AppText>
+                </View>
+              </View>
               <AppText variant="small">
                 Bukti terbaru sedang diperiksa. Pengiriman baru akan tersedia
                 jika internal meminta perbaikan.
@@ -615,9 +667,17 @@ export function TaskDetailScreen() {
             </SurfaceCard>
           ) : revisionNeeded ? (
             <SurfaceCard>
-              <AppText variant="subtitle" color={Colors.dangerText}>
-                Perlu perbaikan
-              </AppText>
+              <View style={styles.cardHeader}>
+                <IconBadge icon="⚠️" label="Perlu perbaikan" tone="danger" />
+                <View style={styles.cardCopy}>
+                  <AppText variant="subtitle" color={Colors.dangerText}>
+                    Perlu perbaikan
+                  </AppText>
+                  <AppText variant="small" color={Colors.muted}>
+                    Ikuti catatan reviewer sebelum kirim ulang.
+                  </AppText>
+                </View>
+              </View>
               <AppText variant="small">
                 Catatan reviewer: {latestAttempt.reviewNote ?? 'Perbaiki bukti lalu kirim kembali.'}
               </AppText>
@@ -638,16 +698,13 @@ export function TaskDetailScreen() {
 
           {unlocked && !pendingReview && !completed ? (
             <>
-              <SurfaceCard>
-                <AppText variant="subtitle">Foto Bukti</AppText>
-                <EvidencePicker
-                  asset={asset}
-                  onChange={setAsset}
-                  disabled={
-                    submitting || locationActionState.status === 'checking'
-                  }
-                />
-              </SurfaceCard>
+              <EvidencePicker
+                asset={asset}
+                onChange={setAsset}
+                disabled={
+                  submitting || locationActionState.status === 'checking'
+                }
+              />
               <FormField
                 label="Catatan Bukti"
                 inputProps={{
@@ -691,6 +748,7 @@ export function TaskDetailScreen() {
                     ? 'Periksa GPS & Kirim Bukti'
                     : 'Kirim Bukti'
                 }
+                icon={task.requiresLocation ? '📍' : '📤'}
                 loading={submitting}
                 disabled={locationActionState.status === 'checking'}
                 onPress={handleSubmit}
@@ -710,3 +768,20 @@ export default function TaskDetailRoute() {
     </RoleGuard>
   );
 }
+
+const styles = StyleSheet.create({
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.three,
+  },
+  cardCopy: {
+    flex: 1,
+    gap: Spacing.one,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+});

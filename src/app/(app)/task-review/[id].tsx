@@ -9,6 +9,8 @@ import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { FeedbackState } from '@/components/ui/feedback-state';
 import { FormField } from '@/components/ui/form-field';
+import { IconBadge } from '@/components/ui/icon-badge';
+import { InfoRow } from '@/components/ui/info-row';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Spacing } from '@/constants/theme';
@@ -73,12 +75,21 @@ function EvidenceLocation({
   if (!hasLocation) {
     return (
       <SurfaceCard>
-        <AppText variant="small" color={Colors.muted}>
-          Lokasi tidak tersedia
-        </AppText>
-        <AppText variant="small">
-          Waktu kirim: {formatWib(attempt.createdAt)}
-        </AppText>
+        <View style={styles.cardHeader}>
+          <IconBadge icon="📍" label="Lokasi bukti" tone="neutral" />
+          <View style={styles.cardCopy}>
+            <AppText variant="subtitle">Lokasi bukti</AppText>
+            <AppText variant="small" color={Colors.muted}>
+              Lokasi tidak tersedia
+            </AppText>
+          </View>
+        </View>
+        <InfoRow
+          icon="🕒"
+          label="Waktu kirim"
+          value={`Waktu kirim: ${formatWib(attempt.createdAt)}`}
+          tone="sky"
+        />
       </SurfaceCard>
     );
   }
@@ -99,16 +110,37 @@ function EvidenceLocation({
 
   return (
     <SurfaceCard>
-      <AppText variant="small">
-        Koordinat: {latitude.toFixed(6)}, {longitude.toFixed(6)}
-      </AppText>
-      <AppText variant="small">
-        Jarak ke titik lahan: {geofence.distanceM ?? 0} meter ·{' '}
-        {locationLabel} {plot.radiusGeofenceM} meter
-      </AppText>
-      <AppText variant="small">
-        Waktu kirim: {formatWib(attempt.createdAt)}
-      </AppText>
+      <View style={styles.cardHeader}>
+        <IconBadge
+          icon={geofence.unlocked ? '✅' : '⚠️'}
+          label="Lokasi bukti"
+          tone={geofence.unlocked ? 'forest' : 'amber'}
+        />
+        <View style={styles.cardCopy}>
+          <AppText variant="subtitle">Lokasi bukti</AppText>
+          <AppText variant="small" color={Colors.muted}>
+            Validasi jarak bukti terhadap radius lahan.
+          </AppText>
+        </View>
+      </View>
+      <InfoRow
+        icon="🛰️"
+        label="Koordinat"
+        value={`Koordinat: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`}
+        tone="sky"
+      />
+      <InfoRow
+        icon="📍"
+        label="Jarak"
+        value={`Jarak ke titik lahan: ${geofence.distanceM ?? 0} meter · ${locationLabel} ${plot.radiusGeofenceM} meter`}
+        tone={geofence.unlocked ? 'forest' : 'amber'}
+      />
+      <InfoRow
+        icon="🕒"
+        label="Waktu kirim"
+        value={`Waktu kirim: ${formatWib(attempt.createdAt)}`}
+        tone="sky"
+      />
     </SurfaceCard>
   );
 }
@@ -342,28 +374,65 @@ export function TaskReviewScreen() {
       />
 
       <SurfaceCard>
-        <AppText variant="subtitle">Detail Task</AppText>
-        <AppText variant="small">Lahan: {plot.namaLahan}</AppText>
-        <AppText variant="small">
-          Petani: {farmer?.nama ?? plot.farmerName ?? 'Tidak tersedia'}
-        </AppText>
-        <AppText variant="small">
-          Prioritas: {priorityLabels[task.priority]}
-        </AppText>
-        <AppText variant="small">Jadwal: {task.scheduledFor}</AppText>
-        <AppText variant="small">
-          Instruksi: {task.deskripsi ?? 'Tidak ada instruksi tambahan.'}
-        </AppText>
+        <View style={styles.cardHeader}>
+          <IconBadge icon="📝" label="Detail Task" tone="forest" />
+          <View style={styles.cardCopy}>
+            <AppText variant="subtitle">Detail Task</AppText>
+            <AppText variant="small" color={Colors.muted}>
+              Konteks pekerjaan sebelum memberi keputusan review.
+            </AppText>
+          </View>
+        </View>
+        <InfoRow icon="🌾" label="Lahan" value={`Lahan: ${plot.namaLahan}`} />
+        <InfoRow
+          icon="👨‍🌾"
+          label="Petani"
+          value={`Petani: ${farmer?.nama ?? plot.farmerName ?? 'Tidak tersedia'}`}
+          tone="sky"
+        />
+        <InfoRow
+          icon="🚦"
+          label="Prioritas"
+          value={`Prioritas: ${priorityLabels[task.priority]}`}
+          tone={task.priority === 'high' ? 'danger' : task.priority === 'medium' ? 'amber' : 'forest'}
+        />
+        <InfoRow
+          icon="📅"
+          label="Jadwal"
+          value={`Jadwal: ${task.scheduledFor}`}
+          tone="sky"
+        />
+        <InfoRow
+          icon="📋"
+          label="Instruksi"
+          value={`Instruksi: ${task.deskripsi ?? 'Tidak ada instruksi tambahan.'}`}
+        />
         {task.aiReason ? (
-          <AppText variant="small">Alasan AI: {task.aiReason}</AppText>
+          <InfoRow
+            icon="🤖"
+            label="Alasan AI"
+            value={`Alasan AI: ${task.aiReason}`}
+            tone="amber"
+          />
         ) : null}
-        <AppText variant="small">
-          Bukti lokasi: {task.requiresLocation ? 'Wajib' : 'Tidak diwajibkan'}
-        </AppText>
+        <InfoRow
+          icon={task.requiresLocation ? '📍' : '📎'}
+          label="Bukti lokasi"
+          value={`Bukti lokasi: ${task.requiresLocation ? 'Wajib' : 'Tidak diwajibkan'}`}
+          tone={task.requiresLocation ? 'forest' : 'neutral'}
+        />
       </SurfaceCard>
 
       <View style={styles.section}>
-        <AppText variant="title">Riwayat Bukti</AppText>
+        <View style={styles.sectionTitleRow}>
+          <IconBadge icon="📸" label="Riwayat Bukti" tone="sky" />
+          <View style={styles.cardCopy}>
+            <AppText variant="title">Riwayat Bukti</AppText>
+            <AppText variant="small" color={Colors.muted}>
+              Bukti terbaru yang pending bisa diterima atau diminta revisi.
+            </AppText>
+          </View>
+        </View>
         {attempts.length > 0 ? (
           attempts.map((attempt) => (
             <View key={attempt.id} style={styles.attempt}>
@@ -387,9 +456,17 @@ export function TaskReviewScreen() {
 
       {reviewableAttempt ? (
         <SurfaceCard>
-          <AppText variant="subtitle">
-            Review Percobaan {reviewableAttempt.attemptNumber}
-          </AppText>
+          <View style={styles.cardHeader}>
+            <IconBadge icon="⚖️" label="Review Percobaan" tone="amber" />
+            <View style={styles.cardCopy}>
+              <AppText variant="subtitle">
+                Review Percobaan {reviewableAttempt.attemptNumber}
+              </AppText>
+              <AppText variant="small" color={Colors.muted}>
+                Beri keputusan untuk bukti pending terbaru.
+              </AppText>
+            </View>
+          </View>
           <FormField
             label="Catatan perbaikan"
             error={reviewNoteError}
@@ -417,6 +494,7 @@ export function TaskReviewScreen() {
               <AppButton
                 label="Minta Perbaikan"
                 variant="danger"
+                icon="↺"
                 loading={actionPending === 'revision_requested'}
                 disabled={actionsBlocked}
                 onPress={() => {
@@ -431,6 +509,7 @@ export function TaskReviewScreen() {
               <AppButton
                 label="Terima Bukti"
                 variant="forest"
+                icon="✓"
                 loading={actionPending === 'accepted'}
                 disabled={actionsBlocked}
                 onPress={confirmAcceptance}
@@ -462,6 +541,20 @@ export default function TaskReviewRoute() {
 }
 
 const styles = StyleSheet.create({
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.three,
+  },
+  cardCopy: {
+    flex: 1,
+    gap: Spacing.one,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
   section: {
     gap: Spacing.three,
   },

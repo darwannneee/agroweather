@@ -116,6 +116,7 @@ export function PlotListScreen() {
         action={
           <AppButton
             label="Tambah Lahan"
+            icon="+"
             onPress={() => router.push('/(app)/penataan-lahan/form')}
           />
         }

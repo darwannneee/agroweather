@@ -15,6 +15,8 @@ import type {
 } from '@/lib/farm-types';
 import type { CurrentLocationResult } from '@/services/location';
 
+const hiddenIcon = { includeHiddenElements: true };
+
 jest.mock('expo-router', () => {
   const push = jest.fn();
   return {
@@ -754,6 +756,11 @@ describe('PetaniDashboard', () => {
     const action = await renderReady();
 
     expect(screen.getByText('FIELD FIRST')).toBeOnTheScreen();
+    expect(screen.getByText('📍', hiddenIcon)).toBeOnTheScreen();
+    expect(
+      screen.getAllByText('🌾', hiddenIcon).length
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('📋', hiddenIcon)).toBeOnTheScreen();
     expect(screen.getByText('Lahan aktif')).toBeOnTheScreen();
     expect(screen.getByText('Task hari ini')).toBeOnTheScreen();
     expect(screen.getByText('Task Hari Ini')).toBeOnTheScreen();

@@ -7,6 +7,8 @@ import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { FeedbackState } from '@/components/ui/feedback-state';
 import { FormField } from '@/components/ui/form-field';
+import { IconBadge } from '@/components/ui/icon-badge';
+import { InfoRow } from '@/components/ui/info-row';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -202,6 +204,7 @@ export function FarmerManagementScreen() {
         action={
           <AppButton
             label="Tambah Petani"
+            icon="+"
             onPress={openCreateForm}
           />
         }
@@ -210,6 +213,11 @@ export function FarmerManagementScreen() {
       {mode ? (
         <SurfaceCard>
           <View style={styles.sectionHeader}>
+            <IconBadge
+              icon={mode === 'create' ? '➕' : '✏️'}
+              label={mode === 'create' ? 'Tambah Petani' : 'Edit Petani'}
+              tone="forest"
+            />
             <View style={styles.sectionCopy}>
               <AppText variant="subtitle">
                 {mode === 'create' ? 'Tambah Petani' : 'Edit Petani'}
@@ -260,7 +268,15 @@ export function FarmerManagementScreen() {
           ) : null}
 
           <View style={styles.assignmentSection}>
-            <AppText variant="smallStrong">Assign Lahan</AppText>
+            <View style={styles.sectionHeader}>
+              <IconBadge icon="🗺️" label="Assign Lahan" tone="sky" />
+              <View style={styles.sectionCopy}>
+                <AppText variant="smallStrong">Assign Lahan</AppText>
+                <AppText variant="small" color={Colors.muted}>
+                  Pilih satu atau beberapa lahan untuk petani ini.
+                </AppText>
+              </View>
+            </View>
             <View style={styles.chips}>
               {plots.length === 0 ? (
                 <AppText variant="small" color={Colors.muted}>
@@ -300,7 +316,15 @@ export function FarmerManagementScreen() {
       ) : null}
 
       <SurfaceCard>
-        <AppText variant="subtitle">Daftar Petani</AppText>
+        <View style={styles.sectionHeader}>
+          <IconBadge icon="👨‍🌾" label="Daftar Petani" tone="forest" />
+          <View style={styles.sectionCopy}>
+            <AppText variant="subtitle">Daftar Petani</AppText>
+            <AppText variant="small" color={Colors.muted}>
+              Profil, email, dan lahan aktif yang dipegang.
+            </AppText>
+          </View>
+        </View>
         {farmers.length === 0 ? (
           <AppText variant="small" color={Colors.muted}>
             Belum ada petani.
@@ -313,12 +337,16 @@ export function FarmerManagementScreen() {
                 <AppText variant="small" color={Colors.muted}>
                   {farmer.email}
                 </AppText>
-                <AppText variant="small">
-                  Lahan: {plotNamesForFarmer(plots, farmer.id)}
-                </AppText>
+                <InfoRow
+                  icon="🗺️"
+                  label="Lahan"
+                  value={`Lahan: ${plotNamesForFarmer(plots, farmer.id)}`}
+                  tone="sky"
+                />
               </View>
               <AppButton
                 label={`Edit ${farmer.nama}`}
+                icon="✏️"
                 variant="secondary"
                 onPress={() => openEditForm(farmer)}
               />

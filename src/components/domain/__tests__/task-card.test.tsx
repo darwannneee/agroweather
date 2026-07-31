@@ -4,6 +4,8 @@ import type { FarmTask } from '@/lib/farm-types';
 
 import { TaskCard, type TaskCardState } from '../task-card';
 
+const hiddenIcon = { includeHiddenElements: true };
+
 const task: FarmTask = {
   id: 'task-a',
   lahanId: 'plot-a',
@@ -36,6 +38,9 @@ describe('TaskCard', () => {
     );
 
     expect(screen.getByText('Perlu cek lokasi')).toBeOnTheScreen();
+    expect(screen.getByText('📝', hiddenIcon)).toBeOnTheScreen();
+    expect(screen.getByText('🌾', hiddenIcon)).toBeOnTheScreen();
+    expect(screen.getByText('🚦', hiddenIcon)).toBeOnTheScreen();
     expect(screen.getByText('Radius lahan: 750 meter')).toBeOnTheScreen();
     expect(screen.getByText('Deadline: 2026-08-02')).toBeOnTheScreen();
 

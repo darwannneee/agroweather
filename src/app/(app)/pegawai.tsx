@@ -5,10 +5,14 @@ import type { Href } from 'expo-router';
 
 import { RoleGuard } from '@/components/domain/role-guard';
 import { WeatherSummaryCard } from '@/components/domain/weather-summary-card';
+import { ActionTile } from '@/components/ui/action-tile';
 import { AppButton } from '@/components/ui/app-button';
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { FeedbackState } from '@/components/ui/feedback-state';
+import { IconBadge } from '@/components/ui/icon-badge';
+import { InfoRow } from '@/components/ui/info-row';
+import { MetricCard } from '@/components/ui/metric-card';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Spacing } from '@/constants/theme';
@@ -129,101 +133,105 @@ export function PegawaiDashboard() {
       ) : (
         <>
           <View style={styles.metrics}>
-            <SurfaceCard style={styles.metricCard}>
-              <AppText variant="title">
-                {metrics.present}/{metrics.farmers} Sudah absen
-              </AppText>
-              <AppText variant="small" color={Colors.muted}>
-                Kehadiran valid hari ini
-              </AppText>
-            </SurfaceCard>
-            <SurfaceCard style={styles.metricCard}>
-              <AppText variant="title">
-                {metrics.tasks} Task hari ini
-              </AppText>
-              <AppText variant="small" color={Colors.muted}>
-                Seluruh status operasional
-              </AppText>
-            </SurfaceCard>
-            <SurfaceCard style={styles.metricCard}>
-              <AppText variant="title">
-                {metrics.drafts} Draft AI menunggu
-              </AppText>
-              <AppText variant="small" color={Colors.muted}>
-                Perlu review internal
-              </AppText>
-            </SurfaceCard>
+            <MetricCard
+              icon="✅"
+              value={`${metrics.present}/${metrics.farmers} Sudah absen`}
+              label="Kehadiran"
+              helper="Kehadiran valid hari ini"
+              tone="forest"
+            />
+            <MetricCard
+              icon="📋"
+              value={`${metrics.tasks} Task hari ini`}
+              label="Operasional"
+              helper="Seluruh status operasional"
+              tone="sky"
+            />
+            <MetricCard
+              icon="🤖"
+              value={`${metrics.drafts} Draft AI menunggu`}
+              label="AI Draft"
+              helper="Perlu review internal"
+              tone="amber"
+            />
           </View>
 
           <SurfaceCard>
-            <AppText variant="subtitle">Generate Task AI</AppText>
-            {operations?.lastGeneration ? (
-              <>
-                <AppText variant="bodyStrong">
-                  {generationLabel[operations.lastGeneration.status]}
-                </AppText>
+            <View style={styles.cardHeader}>
+              <IconBadge icon="🌱" label="Generate Task AI" tone="forest" />
+              <View style={styles.copy}>
+                <AppText variant="subtitle">Generate Task AI</AppText>
                 <AppText variant="small" color={Colors.muted}>
-                  {operations.lastGeneration.successCount} berhasil ·{' '}
-                  {operations.lastGeneration.skippedCount} dilewati ·{' '}
-                  {operations.lastGeneration.failedCount} gagal
+                  Draft operasional dari cuaca dan kondisi lahan.
                 </AppText>
-                <AppText variant="smallStrong">
-                  {metrics.warnings} peringatan
-                </AppText>
-              </>
+              </View>
+            </View>
+            {operations?.lastGeneration ? (
+              <View style={styles.infoStack}>
+                <InfoRow
+                  icon="⚙️"
+                  label="Status"
+                  value={generationLabel[operations.lastGeneration.status]}
+                  tone="sky"
+                />
+                <InfoRow
+                  icon="📦"
+                  label="Hasil"
+                  value={`${operations.lastGeneration.successCount} berhasil · ${operations.lastGeneration.skippedCount} dilewati · ${operations.lastGeneration.failedCount} gagal`}
+                  tone="neutral"
+                />
+                <InfoRow
+                  icon="⚠️"
+                  label="Peringatan"
+                  value={`${metrics.warnings} peringatan`}
+                  tone={metrics.warnings > 0 ? 'amber' : 'forest'}
+                />
+              </View>
             ) : (
               <AppText variant="small" color={Colors.muted}>
                 Belum ada generate task hari ini.
               </AppText>
             )}
-            <AppButton
-              label="Review Draft AI"
-              onPress={() => router.push('/(app)/ai-tasks' as Href)}
-            />
           </SurfaceCard>
 
           <WeatherSummaryCard weather={operations?.weather ?? []} />
 
-          <SurfaceCard>
-            <AppText variant="subtitle">Operasional Harian</AppText>
-            <AppText variant="small" color={Colors.muted}>
-              Lihat detail kehadiran dan status setiap task hari ini.
-            </AppText>
-            <AppButton
-              label="Operasional Harian"
-              variant="forest"
+          <View style={styles.actionGrid}>
+            <ActionTile
+              icon="🧭"
+              title="Review Draft AI"
+              description="Cek rekomendasi task sebelum jadi operasional."
+              actionLabel="Review"
+              tone="amber"
+              onPress={() => router.push('/(app)/ai-tasks' as Href)}
+            />
+            <ActionTile
+              icon="🗓️"
+              title="Operasional Harian"
+              description="Detail kehadiran dan status setiap task hari ini."
+              actionLabel="Buka"
+              tone="sky"
               onPress={() =>
                 router.push('/(app)/daily-operations' as Href)
               }
             />
-          </SurfaceCard>
-
-          <SurfaceCard style={styles.operationsCard}>
-            <AppText variant="subtitle" color={Colors.surface}>
-              Penataan Lahan
-            </AppText>
-            <AppText variant="small" color={Colors.surface}>
-              Kelola titik, radius, komoditas, dan petani penanggung jawab.
-            </AppText>
-            <AppButton
-              label="Kelola Lahan"
+            <ActionTile
+              icon="🗺️"
+              title="Kelola Lahan"
+              description="Titik GPS, radius, komoditas, dan petani."
+              actionLabel="Kelola"
+              tone="forest"
               onPress={() => router.push('/(app)/penataan-lahan')}
             />
-          </SurfaceCard>
-
-          <SurfaceCard>
-            <AppText variant="subtitle">
-              Manajemen Petani
-            </AppText>
-            <AppText variant="small" color={Colors.muted}>
-              Tambah petani auto-confirm, edit profil, dan atur lahan yang dipegang.
-            </AppText>
-            <AppButton
-              label="Kelola Petani"
-              variant="forest"
+            <ActionTile
+              icon="👨‍🌾"
+              title="Kelola Petani"
+              description="Tambah auto-confirm dan tempatkan ke lahan."
+              actionLabel="Kelola"
+              tone="forest"
               onPress={() => router.push('/(app)/petani-management' as Href)}
             />
-          </SurfaceCard>
+          </View>
         </>
       )}
     </AppScreen>
@@ -234,11 +242,20 @@ const styles = StyleSheet.create({
   metrics: {
     gap: Spacing.three,
   },
-  metricCard: {
-    flex: 1,
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
   },
-  operationsCard: {
-    backgroundColor: Colors.forest,
+  copy: {
+    flex: 1,
+    gap: Spacing.one,
+  },
+  infoStack: {
+    gap: Spacing.two,
+  },
+  actionGrid: {
+    gap: Spacing.three,
   },
 });
 

@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 import { PlotFormContent } from '@/app/(app)/penataan-lahan/form';
 import type { FarmPlot } from '@/lib/farm-types';
 
+const hiddenIcon = { includeHiddenElements: true };
+
 jest.mock('expo-router', () => {
   const dismissTo = jest.fn();
   const dispatch = jest.fn();
@@ -180,6 +182,9 @@ describe('PlotFormScreen', () => {
     render(<PlotFormContent />);
 
     expect(await screen.findByText('Tambah Lahan')).toBeOnTheScreen();
+    expect(screen.getByText('🧾', hiddenIcon)).toBeOnTheScreen();
+    expect(screen.getByText('👨‍🌾', hiddenIcon)).toBeOnTheScreen();
+    expect(screen.getByText('📍', hiddenIcon)).toBeOnTheScreen();
     expect(locationMocks.__run).not.toHaveBeenCalled();
 
     fireEvent.press(screen.getByRole('button', { name: 'Gunakan Lokasi Saya' }));

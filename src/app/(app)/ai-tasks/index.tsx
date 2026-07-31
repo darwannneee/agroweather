@@ -15,6 +15,9 @@ import { AppButton } from '@/components/ui/app-button';
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { FeedbackState } from '@/components/ui/feedback-state';
+import { IconBadge } from '@/components/ui/icon-badge';
+import { InfoRow } from '@/components/ui/info-row';
+import { MetricCard } from '@/components/ui/metric-card';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -164,6 +167,14 @@ function SelectChip({
         disabled && styles.disabled,
       ]}
     >
+      {selected ? (
+        <AppText
+          variant="smallStrong"
+          color={selected ? Colors.surface : Colors.ink}
+        >
+          ✓
+        </AppText>
+      ) : null}
       <AppText
         variant="smallStrong"
         color={selected ? Colors.surface : Colors.ink}
@@ -481,12 +492,39 @@ export function AiTasksScreen() {
         />
       ) : (
         <>
+          <View style={styles.metricsGrid}>
+            <MetricCard
+              icon="🤖"
+              value={drafts.length}
+              label="Draft pending"
+              helper="Menunggu keputusan internal"
+            />
+            <MetricCard
+              icon="🗺️"
+              value={selectedPlotIds.size}
+              label="Lahan dipilih"
+              helper={`${selectablePlots.length} lahan siap generate`}
+              tone="sky"
+            />
+            <MetricCard
+              icon="⚠️"
+              value={unassignedActivePlots.length}
+              label="Belum assigned"
+              helper="Tidak ikut generasi AI"
+              tone="amber"
+            />
+          </View>
           <SurfaceCard>
-            <AppText variant="subtitle">Pilih Lahan untuk Generasi</AppText>
-            <AppText variant="small" color={Colors.muted}>
-              Task hanya dibuat untuk lahan yang dipilih setelah tombol
-              generasi ditekan.
-            </AppText>
+            <View style={styles.cardHeader}>
+              <IconBadge icon="🌱" label="Pilih Lahan untuk Generasi" />
+              <View style={styles.cardCopy}>
+                <AppText variant="subtitle">Pilih Lahan untuk Generasi</AppText>
+                <AppText variant="small" color={Colors.muted}>
+                  Task hanya dibuat untuk lahan yang dipilih setelah tombol
+                  generasi ditekan.
+                </AppText>
+              </View>
+            </View>
             <View style={styles.chipGroup}>
               {selectablePlots.map((plot) => (
                 <SelectChip
@@ -516,6 +554,7 @@ export function AiTasksScreen() {
             ) : null}
             <AppButton
               label="Generate Task AI"
+              icon="✨"
               loading={generationPending}
               disabled={approvalPending}
               onPress={() => void handleGenerate()}
@@ -544,25 +583,44 @@ export function AiTasksScreen() {
 
           {generationLog || generationLogError ? (
             <SurfaceCard>
-              <AppText variant="subtitle">Log Generasi Terakhir</AppText>
+              <View style={styles.cardHeader}>
+                <IconBadge icon="🧾" label="Log Generasi Terakhir" tone="sky" />
+                <View style={styles.cardCopy}>
+                  <AppText variant="subtitle">Log Generasi Terakhir</AppText>
+                  <AppText variant="small" color={Colors.muted}>
+                    Ringkasan run AI terakhir yang tersimpan.
+                  </AppText>
+                </View>
+              </View>
               {generationLog ? (
                 <>
                   <AppText variant="smallStrong">
                     Run ID: {generationLog.runId}
                   </AppText>
-                  <AppText variant="small" color={Colors.muted}>
-                    Status: {statusLabels[generationLog.status]} · Trigger:{' '}
-                    {generationLog.trigger} · Tanggal:{' '}
-                    {generationLog.scheduledFor}
-                  </AppText>
-                  <AppText variant="small" color={Colors.muted}>
-                    Draft pending dibuat: {generationLog.draftCount}
-                  </AppText>
-                  <AppText variant="small" color={Colors.muted}>
-                    Lahan: {generationLog.successCount} sukses,{' '}
-                    {generationLog.skippedCount} dilewati,{' '}
-                    {generationLog.failedCount} gagal.
-                  </AppText>
+                  <InfoRow
+                    icon="🚦"
+                    label="Status"
+                    value={`Status: ${statusLabels[generationLog.status]} · Trigger: ${generationLog.trigger} · Tanggal: ${generationLog.scheduledFor}`}
+                    tone={
+                      generationLog.status === 'failed'
+                        ? 'danger'
+                        : generationLog.status === 'partial'
+                          ? 'amber'
+                          : 'forest'
+                    }
+                  />
+                  <InfoRow
+                    icon="📦"
+                    label="Draft"
+                    value={`Draft pending dibuat: ${generationLog.draftCount}`}
+                    tone="sky"
+                  />
+                  <InfoRow
+                    icon="🗺️"
+                    label="Lahan"
+                    value={`Lahan: ${generationLog.successCount} sukses, ${generationLog.skippedCount} dilewati, ${generationLog.failedCount} gagal.`}
+                    tone="amber"
+                  />
                   {generationLog.targets.length > 0 ? (
                     <View style={styles.logList}>
                       {generationLog.targets.map((target) => (
@@ -614,7 +672,15 @@ export function AiTasksScreen() {
           ) : null}
 
           <SurfaceCard>
-            <AppText variant="subtitle">Filter Draft</AppText>
+            <View style={styles.cardHeader}>
+              <IconBadge icon="🔎" label="Filter Draft" tone="amber" />
+              <View style={styles.cardCopy}>
+                <AppText variant="subtitle">Filter Draft</AppText>
+                <AppText variant="small" color={Colors.muted}>
+                  Persempit draft berdasarkan lahan, petani, atau prioritas.
+                </AppText>
+              </View>
+            </View>
             <AppText variant="smallStrong">Lahan</AppText>
             <View style={styles.chipGroup}>
               {selectablePlots.map((plot) => (
@@ -674,6 +740,7 @@ export function AiTasksScreen() {
             <AppButton
               label="Reset semua filter"
               variant="secondary"
+              icon="↺"
               disabled={
                 approvalPending ||
                 (!plotFilter && !assigneeFilter && !priorityFilter)
@@ -693,6 +760,7 @@ export function AiTasksScreen() {
           ) : null}
 
           <View style={styles.sectionHeader}>
+            <IconBadge icon="📋" label="Draft Menunggu Review" tone="forest" />
             <View style={styles.sectionTitle}>
               <AppText variant="subtitle">Draft Menunggu Review</AppText>
               <AppText variant="small" color={Colors.muted}>
@@ -701,6 +769,7 @@ export function AiTasksScreen() {
             </View>
             <AppButton
               label="Setujui Terpilih"
+              icon="✓"
               variant="forest"
               loading={approvalPending}
               disabled={
@@ -735,6 +804,7 @@ export function AiTasksScreen() {
               <AppButton
                 label="Muat Ulang Draft"
                 variant="secondary"
+                icon="↺"
                 loading={approvalPending}
                 disabled={generationPending}
                 onPress={() => void handleDraftRefresh()}
@@ -799,23 +869,44 @@ export default function AiTasksRoute() {
 }
 
 const styles = StyleSheet.create({
+  metricsGrid: {
+    gap: Spacing.three,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.three,
+  },
+  cardCopy: {
+    flex: 1,
+    gap: Spacing.one,
+  },
   chipGroup: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.two,
   },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
     minHeight: 44,
     justifyContent: 'center',
     borderRadius: Radius.pill,
     borderColor: Colors.border,
     borderWidth: 1,
     paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.two,
     backgroundColor: Colors.canvas,
   },
   chipSelected: {
     backgroundColor: Colors.forest,
     borderColor: Colors.forest,
+    shadowColor: Colors.forest,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 2,
   },
   disabled: {
     opacity: 0.55,

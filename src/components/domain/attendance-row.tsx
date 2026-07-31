@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
+import { IconBadge } from '@/components/ui/icon-badge';
 import { StatusPill } from '@/components/ui/status-pill';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -50,19 +51,30 @@ function AttendanceContent({
   return (
     <SurfaceCard>
       <View style={styles.header}>
-        <AppText variant="subtitle" style={styles.name}>
-          {farmerName}
-        </AppText>
+        <IconBadge
+          icon={present ? '✅' : '⏳'}
+          label={`Kehadiran ${farmerName}`}
+          tone={present ? 'forest' : 'neutral'}
+        />
+        <View style={styles.name}>
+          <AppText variant="subtitle">
+            {farmerName}
+          </AppText>
+          {present ? (
+            <AppText variant="small" color={Colors.muted}>
+              {jakartaTime(record.checkedInAt)} · {record.plotName}
+            </AppText>
+          ) : (
+            <AppText variant="small" color={Colors.muted}>
+              Menunggu check-in GPS hari ini
+            </AppText>
+          )}
+        </View>
         <StatusPill
           label={present ? 'Sudah absen' : 'Belum absen'}
           tone={present ? 'success' : 'neutral'}
         />
       </View>
-      {present ? (
-        <AppText variant="small" color={Colors.muted}>
-          {jakartaTime(record.checkedInAt)} · {record.plotName}
-        </AppText>
-      ) : null}
     </SurfaceCard>
   );
 }
@@ -118,9 +130,10 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: Spacing.two,
+    gap: Spacing.three,
   },
   name: {
     flex: 1,
+    gap: Spacing.one,
   },
 });

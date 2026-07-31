@@ -8,6 +8,8 @@ import {
 import { PegawaiDashboard } from '@/app/(app)/pegawai';
 import type { DailyOperations } from '@/services/daily-operations';
 
+const hiddenIcon = { includeHiddenElements: true };
+
 jest.mock('expo-router', () => {
   const push = jest.fn();
   return {
@@ -196,6 +198,11 @@ describe('PegawaiDashboard', () => {
     expect(await screen.findByText('6/8 Sudah absen')).toBeOnTheScreen();
     expect(screen.getByText('4 Task hari ini')).toBeOnTheScreen();
     expect(screen.getByText('2 Draft AI menunggu')).toBeOnTheScreen();
+    expect(screen.getByText('✅', hiddenIcon)).toBeOnTheScreen();
+    expect(screen.getByText('📋', hiddenIcon)).toBeOnTheScreen();
+    expect(screen.getByText('🤖', hiddenIcon)).toBeOnTheScreen();
+    expect(screen.getByText('🗺️', hiddenIcon)).toBeOnTheScreen();
+    expect(screen.getByText('👨‍🌾', hiddenIcon)).toBeOnTheScreen();
     expect(screen.getByText('2 peringatan')).toBeOnTheScreen();
     expect(screen.getByText('Cuaca Lahan')).toBeOnTheScreen();
     expect(screen.getByText('Sawah Timur')).toBeOnTheScreen();

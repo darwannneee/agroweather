@@ -10,6 +10,7 @@ import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { FeedbackState } from '@/components/ui/feedback-state';
 import { FormField } from '@/components/ui/form-field';
+import { IconBadge } from '@/components/ui/icon-badge';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -72,6 +73,30 @@ function formFromPlot(plot: FarmPlot): PlotFormValues {
     lngCenter: plot.lngCenter,
     radiusGeofenceM: plot.radiusGeofenceM,
   };
+}
+
+function SectionTitle({
+  icon,
+  title,
+  description,
+}: {
+  icon: string;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <View style={styles.sectionHeader}>
+      <IconBadge icon={icon} label={title} tone="forest" />
+      <View style={styles.sectionCopy}>
+        <AppText variant="subtitle">{title}</AppText>
+        {description ? (
+          <AppText variant="small" color={Colors.muted}>
+            {description}
+          </AppText>
+        ) : null}
+      </View>
+    </View>
+  );
 }
 
 export function PlotFormContent() {
@@ -281,7 +306,11 @@ export function PlotFormContent() {
       />
 
       <SurfaceCard>
-        <AppText variant="subtitle">Informasi Lahan</AppText>
+        <SectionTitle
+          icon="🧾"
+          title="Informasi Lahan"
+          description="Nama, komoditas, luas, dan fase kerja."
+        />
         <FormField
           label="Nama Lahan"
           error={errors.namaLahan}
@@ -326,10 +355,11 @@ export function PlotFormContent() {
       </SurfaceCard>
 
       <SurfaceCard>
-        <AppText variant="subtitle">Petani Penanggung Jawab</AppText>
-        <AppText variant="small" color={Colors.muted}>
-          Bisa pilih lebih dari satu petani. Petani utama dipakai sebagai default assign task.
-        </AppText>
+        <SectionTitle
+          icon="👨‍🌾"
+          title="Petani Penanggung Jawab"
+          description="Bisa pilih lebih dari satu petani. Petani utama dipakai sebagai default assign task."
+        />
         <View style={styles.chips}>
           <Pressable
             accessibilityLabel="Belum assign"
@@ -370,10 +400,11 @@ export function PlotFormContent() {
 
       {selectedFarmers.length > 0 ? (
         <SurfaceCard>
-          <AppText variant="subtitle">Petani Utama</AppText>
-          <AppText variant="small" color={Colors.muted}>
-            Dipakai untuk default assignee draft AI dan task manual.
-          </AppText>
+          <SectionTitle
+            icon="⭐"
+            title="Petani Utama"
+            description="Dipakai untuk default assignee draft AI dan task manual."
+          />
           <View style={styles.chips}>
             {selectedFarmers.map((farmer) => {
               const selected = form.primaryFarmerId === farmer.id;
@@ -400,7 +431,11 @@ export function PlotFormContent() {
       ) : null}
 
       <SurfaceCard>
-        <AppText variant="subtitle">Lokasi Lahan</AppText>
+        <SectionTitle
+          icon="📍"
+          title="Lokasi Lahan"
+          description="Konfirmasi titik GPS dan radius geofence lahan."
+        />
         <MapPicker
           value={
             form.latCenter !== null && form.lngCenter !== null
@@ -447,6 +482,15 @@ export default function PlotFormRoute() {
 }
 
 const styles = StyleSheet.create({
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  sectionCopy: {
+    flex: 1,
+    gap: Spacing.one,
+  },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   chip: {
     minHeight: 44,

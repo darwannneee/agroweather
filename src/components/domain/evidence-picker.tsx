@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Image, Linking, StyleSheet } from 'react-native';
+import { Image, Linking, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
 import { AppButton } from '@/components/ui/app-button';
 import { AppText } from '@/components/ui/app-text';
+import { IconBadge } from '@/components/ui/icon-badge';
 import { SurfaceCard } from '@/components/ui/surface-card';
-import { Colors, Radius } from '@/constants/theme';
+import { Colors, Radius, Spacing } from '@/constants/theme';
 
 export type EvidenceAsset = {
   uri: string;
@@ -178,10 +179,15 @@ export function EvidencePicker({
 
   return (
     <SurfaceCard>
-      <AppText variant="subtitle">Foto Bukti</AppText>
-      <AppText variant="small" color={Colors.muted}>
-        Ambil foto terbaru atau pilih dari galeri.
-      </AppText>
+      <View style={styles.cardHeader}>
+        <IconBadge icon="📸" label="Foto Bukti" tone="sky" />
+        <View style={styles.copy}>
+          <AppText variant="subtitle">Foto Bukti</AppText>
+          <AppText variant="small" color={Colors.muted}>
+            Ambil foto terbaru atau pilih dari galeri.
+          </AppText>
+        </View>
+      </View>
       {asset ? (
         <Image
           accessibilityLabel="Pratinjau foto bukti"
@@ -198,18 +204,21 @@ export function EvidencePicker({
         <AppButton
           label="Buka Pengaturan"
           variant="secondary"
+          icon="⚙️"
           onPress={openSettings}
           disabled={actionsDisabled}
         />
       ) : null}
       <AppButton
         label={asset ? 'Ganti Foto Bukti' : 'Pilih Foto Bukti'}
+        icon="🖼️"
         onPress={pickImage}
         disabled={actionsDisabled}
       />
       <AppButton
         label="Ambil Foto"
         variant="secondary"
+        icon="📷"
         onPress={captureImage}
         disabled={actionsDisabled}
       />
@@ -217,6 +226,7 @@ export function EvidencePicker({
         <AppButton
           label="Hapus Foto"
           variant="danger"
+          icon="🗑️"
           onPress={deleteAsset}
           disabled={actionsDisabled}
         />
@@ -226,9 +236,20 @@ export function EvidencePicker({
 }
 
 const styles = StyleSheet.create({
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.three,
+  },
+  copy: {
+    flex: 1,
+    gap: Spacing.one,
+  },
   preview: {
     width: '100%',
     height: 220,
     borderRadius: Radius.card,
+    borderColor: Colors.border,
+    borderWidth: 1,
   },
 });

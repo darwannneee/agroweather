@@ -1,6 +1,8 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
+import { IconBadge } from '@/components/ui/icon-badge';
+import { InfoRow } from '@/components/ui/info-row';
 import { StatusPill } from '@/components/ui/status-pill';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -59,6 +61,7 @@ export function TaskCard({ task, plotName, state, radiusM, onPress }: TaskCardPr
     >
       <SurfaceCard>
         <View style={styles.header}>
+          <IconBadge icon="📝" label={`Tugas ${task.judul}`} tone="sky" />
           <View style={styles.copy}>
             <AppText variant="subtitle">{task.judul}</AppText>
             <AppText variant="small" color={Colors.muted}>
@@ -68,17 +71,35 @@ export function TaskCard({ task, plotName, state, radiusM, onPress }: TaskCardPr
           <StatusPill label={status.label} tone={status.tone} />
         </View>
 
-        <AppText variant="small">
-          Prioritas: {priorityLabel[task.priority]}
-        </AppText>
-        <AppText variant="small">
-          Tanggal tugas: {task.scheduledFor}
-        </AppText>
+        <View style={styles.infoGrid}>
+          <InfoRow
+            icon="🚦"
+            label="Prioritas"
+            value={`Prioritas: ${priorityLabel[task.priority]}`}
+            tone={task.priority === 'high' ? 'danger' : task.priority === 'medium' ? 'amber' : 'forest'}
+          />
+          <InfoRow
+            icon="📅"
+            label="Tanggal"
+            value={`Tanggal tugas: ${task.scheduledFor}`}
+            tone="neutral"
+          />
+        </View>
         {task.deadline ? (
-          <AppText variant="small">Deadline: {task.deadline}</AppText>
+          <InfoRow
+            icon="⏰"
+            label="Deadline"
+            value={`Deadline: ${task.deadline}`}
+            tone="amber"
+          />
         ) : null}
         {showRadius ? (
-          <AppText variant="small">Radius lahan: {radiusM} meter</AppText>
+          <InfoRow
+            icon="🌾"
+            label="Radius"
+            value={`Radius lahan: ${radiusM} meter`}
+            tone="forest"
+          />
         ) : null}
       </SurfaceCard>
     </Pressable>
@@ -96,9 +117,12 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: Spacing.two,
+    gap: Spacing.three,
   },
   copy: {
     flex: 1,
+  },
+  infoGrid: {
+    gap: Spacing.two,
   },
 });

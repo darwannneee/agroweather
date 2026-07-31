@@ -7,6 +7,8 @@ import type {
 
 import { EvidenceAttemptCard } from '../evidence-attempt-card';
 
+const hiddenIcon = { includeHiddenElements: true };
+
 const attempt: EvidenceAttempt = {
   id: 'evidence-1',
   taskId: 'task-1',
@@ -26,6 +28,8 @@ test('announces attempt photo, farmer note, and reviewer note', () => {
   render(<EvidenceAttemptCard attempt={attempt} />);
 
   expect(screen.getByText('Percobaan 2')).toBeOnTheScreen();
+  expect(screen.getByText('📸', hiddenIcon)).toBeOnTheScreen();
+  expect(screen.getByText('🧑‍🌾', hiddenIcon)).toBeOnTheScreen();
   expect(screen.getByText('Perlu perbaikan')).toBeOnTheScreen();
   expect(screen.getByLabelText('Foto bukti percobaan 2')).toBeOnTheScreen();
   expect(screen.getByText('Catatan petani: Saluran dibersihkan')).toBeOnTheScreen();

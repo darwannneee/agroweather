@@ -6,6 +6,8 @@ import { AppButton } from '@/components/ui/app-button';
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { FormField } from '@/components/ui/form-field';
+import { IconBadge } from '@/components/ui/icon-badge';
+import { InfoRow } from '@/components/ui/info-row';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -79,6 +81,22 @@ export default function LoginScreen() {
         description="Akses tugas lapangan dan operasional lahan dari satu tempat."
       />
 
+      <SurfaceCard style={styles.brandCard}>
+        <View style={styles.brandHeader}>
+          <IconBadge icon="🌾" label="AgroWeather" tone="forest" size="lg" />
+          <View style={styles.brandCopy}>
+            <AppText variant="subtitle">Operasional lahan lebih jelas</AppText>
+            <AppText variant="small" color={Colors.muted}>
+              Cuaca, GPS, absen, dan task harian dibuat mudah dibaca di lapangan.
+            </AppText>
+          </View>
+        </View>
+        <View style={styles.featureGrid}>
+          <InfoRow icon="🛰️" label="GPS" value="Trigger manual saat dibutuhkan" tone="sky" />
+          <InfoRow icon="🤖" label="AI" value="Draft task harian dari cuaca" tone="amber" />
+        </View>
+      </SurfaceCard>
+
       <SurfaceCard style={styles.form}>
         <FormField
           label="Email"
@@ -141,6 +159,7 @@ export default function LoginScreen() {
 
         <AppButton
           label="Masuk"
+          icon="→"
           variant="forest"
           loading={submitting}
           disabled={submitting}
@@ -158,6 +177,21 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   form: {
     gap: Spacing.four,
+  },
+  brandCard: {
+    gap: Spacing.four,
+  },
+  brandHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  brandCopy: {
+    flex: 1,
+    gap: Spacing.one,
+  },
+  featureGrid: {
+    gap: Spacing.two,
   },
   passwordField: {
     gap: Spacing.two,

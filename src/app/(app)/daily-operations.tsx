@@ -10,9 +10,12 @@ import { AppButton } from '@/components/ui/app-button';
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { FeedbackState } from '@/components/ui/feedback-state';
+import { IconBadge } from '@/components/ui/icon-badge';
+import { InfoRow } from '@/components/ui/info-row';
+import { MetricCard } from '@/components/ui/metric-card';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
-import { Spacing } from '@/constants/theme';
+import { Colors, Spacing } from '@/constants/theme';
 import {
   deriveTaskOperationalState,
   jakartaDate,
@@ -60,26 +63,44 @@ function AttendanceDetail({
 }) {
   return (
     <SurfaceCard>
-      <AppText variant="subtitle">
-        Detail Kehadiran {record.farmerName}
-      </AppText>
-      <AppText variant="small">Lahan: {record.plotName}</AppText>
-      <AppText variant="small">
-        Waktu masuk: {jakartaTime(record.checkedInAt)}
-      </AppText>
-      <AppText variant="small">
-        Jarak:{' '}
-        {record.distanceM === null
-          ? 'Tidak tersedia'
-          : `${Math.round(record.distanceM)} meter`}
-      </AppText>
-      <AppText variant="small">
-        Koordinat: {record.latitude.toFixed(6)},{' '}
-        {record.longitude.toFixed(6)}
-      </AppText>
+      <View style={styles.cardHeader}>
+        <IconBadge icon="✅" label="Detail Kehadiran" tone="forest" />
+        <View style={styles.cardCopy}>
+          <AppText variant="subtitle">
+            Detail Kehadiran {record.farmerName}
+          </AppText>
+          <AppText variant="small" color={Colors.muted}>
+            Absensi valid dengan titik lokasi tersimpan.
+          </AppText>
+        </View>
+      </View>
+      <InfoRow icon="🌾" label="Lahan" value={`Lahan: ${record.plotName}`} />
+      <InfoRow
+        icon="🕒"
+        label="Waktu masuk"
+        value={`Waktu masuk: ${jakartaTime(record.checkedInAt)}`}
+        tone="sky"
+      />
+      <InfoRow
+        icon="📍"
+        label="Jarak"
+        value={`Jarak: ${
+          record.distanceM === null
+            ? 'Tidak tersedia'
+            : `${Math.round(record.distanceM)} meter`
+        }`}
+        tone="amber"
+      />
+      <InfoRow
+        icon="🛰️"
+        label="Koordinat"
+        value={`Koordinat: ${record.latitude.toFixed(6)}, ${record.longitude.toFixed(6)}`}
+        tone="sky"
+      />
       <AppButton
         label="Tutup detail absensi"
         variant="secondary"
+        icon="×"
         onPress={onClose}
       />
     </SurfaceCard>
@@ -155,8 +176,41 @@ export function DailyOperationsScreen() {
         />
       ) : (
         <>
+          <View style={styles.metricsGrid}>
+            <MetricCard
+              icon="✅"
+              value={`${operations?.attendance.filter((item) => item.status === 'present').length ?? 0}/${operations?.attendance.length ?? 0}`}
+              label="Sudah absen"
+              helper="Kehadiran valid hari ini"
+            />
+            <MetricCard
+              icon="⏳"
+              value={
+                operations?.attendance.filter((item) => item.status === 'absent')
+                  .length ?? 0
+              }
+              label="Belum absen"
+              helper="Perlu dipantau internal"
+              tone="amber"
+            />
+            <MetricCard
+              icon="📋"
+              value={operations?.tasks.length ?? 0}
+              label="Task hari ini"
+              helper="Semua status operasional"
+              tone="sky"
+            />
+          </View>
           <View style={styles.section}>
-            <AppText variant="title">Kehadiran Hari Ini</AppText>
+            <View style={styles.sectionTitleRow}>
+              <IconBadge icon="👨‍🌾" label="Kehadiran Hari Ini" tone="sky" />
+              <View style={styles.cardCopy}>
+                <AppText variant="title">Kehadiran Hari Ini</AppText>
+                <AppText variant="small" color={Colors.muted}>
+                  Status absen petani berdasarkan data hari ini.
+                </AppText>
+              </View>
+            </View>
             {operations?.attendance.length ? (
               operations.attendance.map((item) =>
                 item.status === 'present' && item.record ? (
@@ -192,13 +246,22 @@ export function DailyOperationsScreen() {
           ) : null}
 
           <View style={styles.section}>
-            <AppText variant="title">Task Hari Ini</AppText>
+            <View style={styles.sectionTitleRow}>
+              <IconBadge icon="📋" label="Task Hari Ini" tone="forest" />
+              <View style={styles.cardCopy}>
+                <AppText variant="title">Task Hari Ini</AppText>
+                <AppText variant="small" color={Colors.muted}>
+                  Filter cepat untuk review bukti dan progres lapangan.
+                </AppText>
+              </View>
+            </View>
             <View style={styles.filters}>
               {filters.map((item) => (
                 <AppButton
                   key={item.value}
                   label={item.label}
                   variant={filter === item.value ? 'forest' : 'secondary'}
+                  icon={filter === item.value ? '✓' : undefined}
                   accessibilityState={{ selected: filter === item.value }}
                   onPress={() => setFilter(item.value)}
                 />
@@ -245,8 +308,25 @@ export function DailyOperationsScreen() {
 }
 
 const styles = StyleSheet.create({
+  metricsGrid: {
+    gap: Spacing.three,
+  },
   section: {
     gap: Spacing.three,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.three,
+  },
+  cardCopy: {
+    flex: 1,
+    gap: Spacing.one,
   },
   filters: {
     gap: Spacing.two,

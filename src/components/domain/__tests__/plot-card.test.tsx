@@ -5,6 +5,8 @@ import type { FarmPlot } from '@/lib/farm-types';
 import { PlotCard } from '../plot-card';
 import { PlotStats } from '../plot-stats';
 
+const hiddenIcon = { includeHiddenElements: true };
+
 const plot: FarmPlot = {
   id: 'plot-a',
   namaLahan: 'Sawah A',
@@ -26,6 +28,9 @@ describe('PlotCard', () => {
     render(<PlotCard plot={plot} onEdit={onEdit} onToggleStatus={onToggleStatus} />);
 
     expect(screen.getByLabelText('Lahan Sawah A')).toBeOnTheScreen();
+    expect(screen.getByText('🗺️', hiddenIcon)).toBeOnTheScreen();
+    expect(screen.getByText('👨‍🌾', hiddenIcon)).toBeOnTheScreen();
+    expect(screen.getByText('📍', hiddenIcon)).toBeOnTheScreen();
     expect(screen.getByText('Sawah A')).toBeOnTheScreen();
     expect(screen.getByText('Radius: 875 meter')).toBeOnTheScreen();
 
@@ -97,6 +102,8 @@ describe('PlotStats', () => {
     expect(screen.getByText('6')).toBeOnTheScreen();
     expect(screen.getByText('4')).toBeOnTheScreen();
     expect(screen.getByText('3')).toBeOnTheScreen();
+    expect(screen.getByText('🧭', hiddenIcon)).toBeOnTheScreen();
+    expect(screen.getByText('✅', hiddenIcon)).toBeOnTheScreen();
     expect(screen.getByText('Total')).toBeOnTheScreen();
     expect(screen.getByText('Aktif')).toBeOnTheScreen();
     expect(screen.getByText('Petani')).toBeOnTheScreen();

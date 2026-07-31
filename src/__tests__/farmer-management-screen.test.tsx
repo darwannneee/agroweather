@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 import { FarmerManagementScreen } from '@/app/(app)/petani-management';
 import type { AppUser } from '@/services/supabase';
 
+const hiddenIcon = { includeHiddenElements: true };
+
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn() }),
 }));
@@ -94,6 +96,8 @@ describe('FarmerManagementScreen', () => {
     render(<FarmerManagementScreen />);
 
     expect(await screen.findByText('Sari')).toBeOnTheScreen();
+    expect(screen.getByText('👨‍🌾', hiddenIcon)).toBeOnTheScreen();
+    expect(screen.getByText('🗺️', hiddenIcon)).toBeOnTheScreen();
     fireEvent.press(screen.getByRole('button', { name: 'Tambah Petani' }));
     fireEvent.changeText(screen.getByLabelText('Nama Petani'), 'Budi');
     fireEvent.changeText(screen.getByLabelText('Email Petani'), 'budi@example.com');

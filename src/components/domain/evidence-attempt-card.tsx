@@ -1,6 +1,8 @@
 import { Image, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
+import { IconBadge } from '@/components/ui/icon-badge';
+import { InfoRow } from '@/components/ui/info-row';
 import { StatusPill } from '@/components/ui/status-pill';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -34,9 +36,15 @@ export function EvidenceAttemptCard({
   return (
     <SurfaceCard>
       <View style={styles.header}>
-        <AppText variant="subtitle" style={styles.title}>
-          Percobaan {attempt.attemptNumber}
-        </AppText>
+        <IconBadge icon="📸" label={photoLabel} tone="sky" />
+        <View style={styles.title}>
+          <AppText variant="subtitle">
+            Percobaan {attempt.attemptNumber}
+          </AppText>
+          <AppText variant="small" color={Colors.muted}>
+            Bukti pekerjaan lapangan
+          </AppText>
+        </View>
         <StatusPill label={review.label} tone={review.tone} />
       </View>
 
@@ -56,13 +64,19 @@ export function EvidenceAttemptCard({
         </AppText>
       )}
 
-      <AppText variant="small">
-        Catatan petani: {attempt.note ?? 'Tidak ada catatan'}
-      </AppText>
+      <InfoRow
+        icon="🧑‍🌾"
+        label="Petani"
+        value={`Catatan petani: ${attempt.note ?? 'Tidak ada catatan'}`}
+        tone="forest"
+      />
       {attempt.reviewNote ? (
-        <AppText variant="small" color={Colors.muted}>
-          Catatan reviewer: {attempt.reviewNote}
-        </AppText>
+        <InfoRow
+          icon="📝"
+          label="Reviewer"
+          value={`Catatan reviewer: ${attempt.reviewNote}`}
+          tone="amber"
+        />
       ) : null}
     </SurfaceCard>
   );
@@ -72,10 +86,11 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: Spacing.two,
+    gap: Spacing.three,
   },
   title: {
     flex: 1,
+    gap: Spacing.one,
   },
   photo: {
     width: '100%',

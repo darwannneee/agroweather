@@ -90,7 +90,7 @@ describe('PenataanLahanScreen', () => {
 
     expect(screen.getAllByText('1')).toHaveLength(1);
     expect(screen.getAllByText('2')).toHaveLength(2);
-    expect(screen.getByText('Petani')).toBeOnTheScreen();
+    expect(screen.getAllByText('Petani').length).toBeGreaterThanOrEqual(1);
   });
 
   test('shows every farmer assigned to a plot', async () => {

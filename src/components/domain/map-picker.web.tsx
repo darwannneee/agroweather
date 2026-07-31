@@ -4,8 +4,9 @@ import { StyleSheet, View } from 'react-native';
 import { AppButton } from '@/components/ui/app-button';
 import { AppText } from '@/components/ui/app-text';
 import { FormField } from '@/components/ui/form-field';
+import { IconBadge } from '@/components/ui/icon-badge';
 import { SurfaceCard } from '@/components/ui/surface-card';
-import { Spacing } from '@/constants/theme';
+import { Colors, Spacing } from '@/constants/theme';
 import { isCoordinateInBounds } from '@/lib/location-policy';
 
 import type { MapPickerProps } from './map-picker.types';
@@ -21,8 +22,15 @@ export function MapPicker({ value, radiusM, onConfirm }: MapPickerProps) {
 
   return (
     <SurfaceCard>
-      <AppText variant="subtitle">Koordinat Lahan</AppText>
-      <AppText variant="small">Peta native tidak tersedia di web. Isi koordinat manual.</AppText>
+      <View style={styles.cardHeader}>
+        <IconBadge icon="🛰️" label="Koordinat Lahan" tone="sky" />
+        <View style={styles.copy}>
+          <AppText variant="subtitle">Koordinat Lahan</AppText>
+          <AppText variant="small" color={Colors.muted}>
+            Peta native tidak tersedia di web. Isi koordinat manual.
+          </AppText>
+        </View>
+      </View>
       <View style={styles.fields}>
         <FormField
           label="Latitude"
@@ -50,6 +58,7 @@ export function MapPicker({ value, radiusM, onConfirm }: MapPickerProps) {
       )}
       <AppButton
         label="Pilih Titik Ini"
+        icon="📍"
         onPress={() => candidate && onConfirm(candidate)}
         disabled={!candidate}
       />
@@ -57,4 +66,15 @@ export function MapPicker({ value, radiusM, onConfirm }: MapPickerProps) {
   );
 }
 
-const styles = StyleSheet.create({ fields: { gap: Spacing.three } });
+const styles = StyleSheet.create({
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.three,
+  },
+  copy: {
+    flex: 1,
+    gap: Spacing.one,
+  },
+  fields: { gap: Spacing.three },
+});

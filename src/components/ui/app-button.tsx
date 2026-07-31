@@ -2,6 +2,7 @@ import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
+  View,
   type PressableProps,
 } from 'react-native';
 
@@ -20,12 +21,14 @@ const palette = {
 
 export function AppButton({
   label,
+  icon,
   variant = 'primary',
   loading = false,
   disabled,
   ...props
 }: Omit<PressableProps, 'children' | 'style'> & {
   label: string;
+  icon?: string;
   variant?: ButtonVariant;
   loading?: boolean;
 }) {
@@ -49,9 +52,16 @@ export function AppButton({
       {loading ? (
         <ActivityIndicator color={colors.text} />
       ) : (
-        <AppText variant="bodyStrong" color={colors.text}>
-          {label}
-        </AppText>
+        <View style={styles.content}>
+          {icon ? (
+            <AppText variant="bodyStrong" color={colors.text}>
+              {icon}
+            </AppText>
+          ) : null}
+          <AppText variant="bodyStrong" color={colors.text}>
+            {label}
+          </AppText>
+        </View>
       )}
     </Pressable>
   );
@@ -65,6 +75,16 @@ const styles = StyleSheet.create({
     borderRadius: Radius.button,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
   },
   outline: { borderWidth: 1, borderColor: Colors.border },
   disabled: { opacity: 0.55 },

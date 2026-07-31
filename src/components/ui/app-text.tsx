@@ -1,6 +1,6 @@
 import { Text, type TextProps } from 'react-native';
 
-import { Colors, Typography } from '@/constants/theme';
+import { Colors, Fonts, Typography } from '@/constants/theme';
 
 type AppTextVariant = keyof typeof Typography;
 
@@ -10,5 +10,18 @@ export function AppText({
   style,
   ...props
 }: TextProps & { variant?: AppTextVariant; color?: string }) {
-  return <Text style={[Typography[variant], { color }, style]} {...props} />;
+  return (
+    <Text
+      style={[
+        Typography[variant],
+        {
+          color,
+          fontFamily: Fonts.sans,
+          letterSpacing: variant === 'label' ? 0.7 : -0.1,
+        },
+        style,
+      ]}
+      {...props}
+    />
+  );
 }

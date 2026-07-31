@@ -4,6 +4,8 @@ import { Colors, Spacing } from '@/constants/theme';
 import type { DashboardWeatherSummary } from '@/lib/farm-types';
 
 import { AppText } from '../ui/app-text';
+import { IconBadge } from '../ui/icon-badge';
+import { InfoRow } from '../ui/info-row';
 import { SurfaceCard } from '../ui/surface-card';
 
 function formatTemperature(value: number): string {
@@ -69,7 +71,15 @@ export function WeatherSummaryCard({
 
   return (
     <SurfaceCard>
-      <AppText variant="subtitle">Cuaca Lahan</AppText>
+      <View style={styles.header}>
+        <IconBadge icon="🌤️" label="Cuaca Lahan" tone="sky" />
+        <View style={styles.headerCopy}>
+          <AppText variant="subtitle">Cuaca Lahan</AppText>
+          <AppText variant="small" color={Colors.muted}>
+            Suhu sekarang dan prakiraan singkat per lahan.
+          </AppText>
+        </View>
+      </View>
       {visibleWeather.length === 0 ? (
         <AppText variant="small" color={Colors.muted}>
           {emptyMessage}
@@ -79,16 +89,24 @@ export function WeatherSummaryCard({
           {visibleWeather.map((item) => (
             <View key={item.plotId} style={styles.item}>
               <AppText variant="bodyStrong">{item.plotName}</AppText>
-              <AppText variant="small" color={Colors.muted}>
-                {formatTemperature(item.temperatureC)} sekarang ·{' '}
-                {item.description}
-              </AppText>
-              <AppText variant="small" color={Colors.muted}>
-                {formatObservedAt(item.observedAt)}
-              </AppText>
-              <AppText variant="small" color={Colors.muted}>
-                {forecastCopy(item)}
-              </AppText>
+              <InfoRow
+                icon="🌡️"
+                label="Sekarang"
+                value={`${formatTemperature(item.temperatureC)} sekarang · ${item.description}`}
+                tone="amber"
+              />
+              <InfoRow
+                icon="🕒"
+                label="Update"
+                value={formatObservedAt(item.observedAt)}
+                tone="neutral"
+              />
+              <InfoRow
+                icon="☔"
+                label="Ke depan"
+                value={forecastCopy(item)}
+                tone="sky"
+              />
             </View>
           ))}
         </View>
@@ -98,6 +116,15 @@ export function WeatherSummaryCard({
 }
 
 const styles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  headerCopy: {
+    flex: 1,
+    gap: Spacing.one,
+  },
   list: {
     gap: Spacing.three,
   },

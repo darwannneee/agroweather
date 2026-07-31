@@ -4,6 +4,12 @@ export const Colors = {
   forest: '#1F542E',
   forestPressed: '#173F23',
   forestMuted: '#314A38',
+  leaf: '#4C9A2A',
+  mint: '#ECF7E7',
+  sky: '#E5F3FF',
+  skyText: '#27506B',
+  amber: '#FFF6D8',
+  amberText: '#7A5918',
   harvest: '#F3BF4F',
   harvestPressed: '#DDA936',
   canvas: '#F6F8F3',
@@ -52,7 +58,8 @@ export const Typography = {
 } as const;
 
 export const Fonts = Platform.select({
-  ios: { sans: 'system-ui', mono: 'ui-monospace' },
-  default: { sans: 'normal', mono: 'monospace' },
+  ios: { sans: 'Avenir Next', mono: 'Menlo' },
+  android: { sans: 'sans-serif', mono: 'monospace' },
+  default: { sans: 'System', mono: 'monospace' },
   web: { sans: 'system-ui, sans-serif', mono: 'ui-monospace, monospace' },
 });

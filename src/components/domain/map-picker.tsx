@@ -4,6 +4,7 @@ import MapView, { Circle, type Region } from 'react-native-maps';
 
 import { AppButton } from '@/components/ui/app-button';
 import { AppText } from '@/components/ui/app-text';
+import { IconBadge } from '@/components/ui/icon-badge';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 
 import type { MapPickerProps } from './map-picker.types';
@@ -61,15 +62,30 @@ export function MapPicker({
             strokeWidth={2}
           />
         </MapView>
+        <View pointerEvents="none" style={styles.radiusPill}>
+          <AppText variant="label" color={Colors.forest}>
+            Radius {radiusM} m
+          </AppText>
+        </View>
         <View pointerEvents="none" style={styles.crosshair}>
-          <AppText variant="title" color={Colors.forest}>＋</AppText>
+          <View style={styles.crosshairBadge}>
+            <AppText variant="title" color={Colors.forest}>＋</AppText>
+          </View>
         </View>
       </View>
-      {locationError ? <AppText variant="small" color={Colors.dangerText}>{locationError}</AppText> : null}
+      {locationError ? (
+        <View style={styles.errorRow}>
+          <IconBadge icon="⚠️" label="GPS error" tone="danger" size="sm" />
+          <AppText variant="small" color={Colors.dangerText} style={styles.errorCopy}>
+            {locationError}
+          </AppText>
+        </View>
+      ) : null}
       {onRequestLocation ? (
         <AppButton
           label={locating ? 'Mencari Lokasi…' : 'Gunakan Lokasi Saya'}
           variant="secondary"
+          icon="🛰️"
           loading={locating}
           onPress={onRequestLocation}
         />
@@ -77,7 +93,11 @@ export function MapPicker({
       <AppText variant="small" color={Colors.muted}>
         Geser peta sampai tanda plus tepat di lokasi lahan.
       </AppText>
-      <AppButton label="Pilih Titik Ini" onPress={() => onConfirm(candidate)} />
+      <AppButton
+        label="Pilih Titik Ini"
+        icon="📍"
+        onPress={() => onConfirm(candidate)}
+      />
     </View>
   );
 }
@@ -90,10 +110,49 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderColor: Colors.border,
     borderWidth: 1,
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    elevation: 2,
+  },
+  radiusPill: {
+    position: 'absolute',
+    left: Spacing.three,
+    top: Spacing.three,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.surface,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one,
+    borderColor: Colors.border,
+    borderWidth: 1,
   },
   crosshair: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  crosshairBadge: {
+    width: 54,
+    height: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.surface,
+    borderColor: Colors.forest,
+    borderWidth: 2,
+    shadowColor: Colors.forest,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  errorCopy: {
+    flex: 1,
   },
 });

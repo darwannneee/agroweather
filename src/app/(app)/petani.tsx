@@ -10,6 +10,7 @@ import { AppButton } from '@/components/ui/app-button';
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { FeedbackState } from '@/components/ui/feedback-state';
+import { MetricCard } from '@/components/ui/metric-card';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Spacing } from '@/constants/theme';
@@ -509,18 +510,22 @@ export function PetaniDashboard() {
           {renderAttendanceCard()}
 
           <View style={styles.metrics}>
-            <SurfaceCard style={styles.metricCard}>
-              <AppText variant="title">{activePlotCount}</AppText>
-              <AppText variant="small" color={Colors.muted}>
-                Lahan aktif
-              </AppText>
-            </SurfaceCard>
-            <SurfaceCard style={styles.metricCard}>
-              <AppText variant="title">{tasks.length}</AppText>
-              <AppText variant="small" color={Colors.muted}>
-                Task hari ini
-              </AppText>
-            </SurfaceCard>
+            <MetricCard
+              icon="🌾"
+              value={activePlotCount}
+              label="Lahan aktif"
+              helper="Area kerja tersedia"
+              tone="forest"
+              style={styles.metricCard}
+            />
+            <MetricCard
+              icon="📋"
+              value={tasks.length}
+              label="Task hari ini"
+              helper="Urut berdasar prioritas"
+              tone="sky"
+              style={styles.metricCard}
+            />
           </View>
 
           <WeatherSummaryCard weather={weather} />

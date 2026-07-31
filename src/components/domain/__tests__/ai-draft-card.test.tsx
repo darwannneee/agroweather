@@ -4,6 +4,8 @@ import type { AiTaskDraft } from '@/lib/farm-types';
 
 import { AiDraftCard } from '../ai-draft-card';
 
+const hiddenIcon = { includeHiddenElements: true };
+
 const draft: AiTaskDraft = {
   id: 'draft-1',
   plotId: 'plot-1',
@@ -37,6 +39,9 @@ test('announces draft plot, assignee, priority, and accessible open action', () 
   render(<AiDraftCard draft={draft} onPress={onPress} />);
 
   expect(screen.getByText('Periksa irigasi')).toBeOnTheScreen();
+  expect(screen.getByText('🤖', hiddenIcon)).toBeOnTheScreen();
+  expect(screen.getByText('🌾', hiddenIcon)).toBeOnTheScreen();
+  expect(screen.getByText('👨‍🌾', hiddenIcon)).toBeOnTheScreen();
   expect(screen.getByText('Lahan: Sawah Utara')).toBeOnTheScreen();
   expect(screen.getByText('Petani: Budi')).toBeOnTheScreen();
   expect(screen.getByText('Prioritas tinggi')).toBeOnTheScreen();

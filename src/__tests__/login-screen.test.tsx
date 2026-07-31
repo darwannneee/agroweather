@@ -3,6 +3,8 @@ import { Alert } from 'react-native';
 
 import LoginScreen from '@/app/login';
 
+const hiddenIcon = { includeHiddenElements: true };
+
 jest.mock('expo-router', () => {
   const replace = jest.fn();
   return {
@@ -51,6 +53,8 @@ describe('LoginScreen', () => {
   test('renders Field First login without a public registration path', () => {
     render(<LoginScreen />);
 
+    expect(screen.getByText('🌾', hiddenIcon)).toBeOnTheScreen();
+    expect(screen.getByText('🛰️', hiddenIcon)).toBeOnTheScreen();
     expect(screen.getByText('FIELD FIRST')).toBeOnTheScreen();
     expect(screen.getByText('Masuk ke AgroWeather')).toBeOnTheScreen();
     expect(screen.queryByText(/Daftar/i)).toBeNull();

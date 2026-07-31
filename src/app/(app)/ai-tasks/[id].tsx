@@ -14,6 +14,8 @@ import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { FeedbackState } from '@/components/ui/feedback-state';
 import { FormField } from '@/components/ui/form-field';
+import { IconBadge } from '@/components/ui/icon-badge';
+import { InfoRow } from '@/components/ui/info-row';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -95,6 +97,11 @@ function ChoiceChip({
         disabled && styles.disabled,
       ]}
     >
+      {selected ? (
+        <AppText variant="smallStrong" color={Colors.surface}>
+          ✓
+        </AppText>
+      ) : null}
       <AppText
         variant="smallStrong"
         color={selected ? Colors.surface : Colors.ink}
@@ -318,34 +325,86 @@ export function AiTaskReviewScreen() {
       />
 
       <SurfaceCard>
-        <AppText variant="subtitle">Ringkasan Cuaca</AppText>
-        <AppText variant="small">
-          Waktu observasi: {formatWib(weather.observedAt)}
-        </AppText>
-        <AppText variant="small">Kondisi: {weather.description}</AppText>
-        <AppText variant="small">Suhu: {weather.temperatureC}°C</AppText>
-        <AppText variant="small">
-          Kelembapan: {weather.humidityPercent}%
-        </AppText>
-        <AppText variant="small">
-          Angin: {weather.windSpeedMps} m/s
-        </AppText>
-        <AppText variant="small">Hujan: {weather.rainMm} mm</AppText>
-        <AppText variant="small">
-          Suhu hari ini: {temperatureRange}
-        </AppText>
-        <AppText variant="small">
-          Peluang hujan maksimum: {rainProbability}
-        </AppText>
+        <View style={styles.cardHeader}>
+          <IconBadge icon="🌤️" label="Ringkasan Cuaca" tone="sky" />
+          <View style={styles.cardCopy}>
+            <AppText variant="subtitle">Ringkasan Cuaca</AppText>
+            <AppText variant="small" color={Colors.muted}>
+              Kondisi saat draft dibuat dan proyeksi hari ini.
+            </AppText>
+          </View>
+        </View>
+        <InfoRow
+          icon="🕒"
+          label="Waktu observasi"
+          value={`Waktu observasi: ${formatWib(weather.observedAt)}`}
+          tone="sky"
+        />
+        <InfoRow
+          icon="☁️"
+          label="Kondisi"
+          value={`Kondisi: ${weather.description}`}
+        />
+        <InfoRow
+          icon="🌡️"
+          label="Suhu"
+          value={`Suhu: ${weather.temperatureC}°C`}
+          tone="amber"
+        />
+        <InfoRow
+          icon="💧"
+          label="Kelembapan"
+          value={`Kelembapan: ${weather.humidityPercent}%`}
+          tone="sky"
+        />
+        <InfoRow
+          icon="🌬️"
+          label="Angin"
+          value={`Angin: ${weather.windSpeedMps} m/s`}
+        />
+        <InfoRow
+          icon="☔"
+          label="Hujan"
+          value={`Hujan: ${weather.rainMm} mm`}
+          tone="sky"
+        />
+        <InfoRow
+          icon="📈"
+          label="Suhu hari ini"
+          value={`Suhu hari ini: ${temperatureRange}`}
+          tone="amber"
+        />
+        <InfoRow
+          icon="🌧️"
+          label="Peluang hujan"
+          value={`Peluang hujan maksimum: ${rainProbability}`}
+          tone="sky"
+        />
       </SurfaceCard>
 
       <SurfaceCard>
-        <AppText variant="subtitle">Alasan Rekomendasi AI</AppText>
+        <View style={styles.cardHeader}>
+          <IconBadge icon="🤖" label="Alasan Rekomendasi AI" />
+          <View style={styles.cardCopy}>
+            <AppText variant="subtitle">Alasan Rekomendasi AI</AppText>
+            <AppText variant="small" color={Colors.muted}>
+              Justifikasi yang dipakai sebelum draft disetujui.
+            </AppText>
+          </View>
+        </View>
         <AppText>{draft.aiReason}</AppText>
       </SurfaceCard>
 
       <SurfaceCard>
-        <AppText variant="subtitle">Detail Task</AppText>
+        <View style={styles.cardHeader}>
+          <IconBadge icon="📝" label="Detail Task" tone="amber" />
+          <View style={styles.cardCopy}>
+            <AppText variant="subtitle">Detail Task</AppText>
+            <AppText variant="small" color={Colors.muted}>
+              Edit instruksi final sebelum dibuat menjadi task aktif.
+            </AppText>
+          </View>
+        </View>
         <FormField
           label="Judul task"
           error={errors.title}
@@ -428,19 +487,35 @@ export function AiTaskReviewScreen() {
             actionsBlocked && styles.disabled,
           ]}
         >
-          <AppText
-            variant="bodyStrong"
-            color={requiresLocation ? Colors.surface : Colors.ink}
-          >
-            {requiresLocation
-              ? 'Bukti wajib menyertakan lokasi'
-              : 'Lokasi tidak diwajibkan'}
-          </AppText>
+          <View style={styles.switchContent}>
+            <IconBadge
+              icon={requiresLocation ? '📍' : '📎'}
+              label="Kebutuhan lokasi"
+              tone={requiresLocation ? 'forest' : 'neutral'}
+              size="sm"
+            />
+            <AppText
+              variant="bodyStrong"
+              color={requiresLocation ? Colors.surface : Colors.ink}
+            >
+              {requiresLocation
+                ? 'Bukti wajib menyertakan lokasi'
+                : 'Lokasi tidak diwajibkan'}
+            </AppText>
+          </View>
         </Pressable>
       </SurfaceCard>
 
       <SurfaceCard>
-        <AppText variant="subtitle">Keputusan Review</AppText>
+        <View style={styles.cardHeader}>
+          <IconBadge icon="⚖️" label="Keputusan Review" tone="sky" />
+          <View style={styles.cardCopy}>
+            <AppText variant="subtitle">Keputusan Review</AppText>
+            <AppText variant="small" color={Colors.muted}>
+              Setujui draft atau tolak dengan alasan yang jelas.
+            </AppText>
+          </View>
+        </View>
         <FormField
           label="Alasan penolakan"
           error={errors.rejectionReason}
@@ -468,6 +543,7 @@ export function AiTaskReviewScreen() {
             <AppButton
               label="Tolak Draft"
               variant="danger"
+              icon="×"
               loading={actionPending === 'reject'}
               disabled={actionsBlocked}
               onPress={confirmReject}
@@ -477,6 +553,7 @@ export function AiTaskReviewScreen() {
             <AppButton
               label="Setujui Draft"
               variant="forest"
+              icon="✓"
               loading={actionPending === 'approve'}
               disabled={actionsBlocked}
               onPress={() => void handleApprove()}
@@ -497,23 +574,41 @@ export default function AiTaskReviewRoute() {
 }
 
 const styles = StyleSheet.create({
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.three,
+  },
+  cardCopy: {
+    flex: 1,
+    gap: Spacing.one,
+  },
   chipGroup: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.two,
   },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
     minHeight: 44,
     justifyContent: 'center',
     borderRadius: Radius.pill,
     borderColor: Colors.border,
     borderWidth: 1,
     paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.two,
     backgroundColor: Colors.canvas,
   },
   chipSelected: {
     backgroundColor: Colors.forest,
     borderColor: Colors.forest,
+    shadowColor: Colors.forest,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 2,
   },
   disabled: {
     opacity: 0.55,
@@ -531,6 +626,11 @@ const styles = StyleSheet.create({
   locationSwitchSelected: {
     backgroundColor: Colors.forest,
     borderColor: Colors.forest,
+  },
+  switchContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
   },
   actions: {
     flexDirection: 'row',

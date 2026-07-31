@@ -2,6 +2,8 @@ import { StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/app-button';
 import { AppText } from '@/components/ui/app-text';
+import { IconBadge } from '@/components/ui/icon-badge';
+import { InfoRow } from '@/components/ui/info-row';
 import { StatusPill } from '@/components/ui/status-pill';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Spacing } from '@/constants/theme';
@@ -32,6 +34,7 @@ export function PlotCard({
   return (
     <SurfaceCard accessibilityLabel={`Lahan ${plot.namaLahan}`}>
       <View style={styles.header}>
+        <IconBadge icon="🗺️" label={`Lahan ${plot.namaLahan}`} tone="forest" />
         <View style={styles.copy}>
           <AppText variant="subtitle">{plot.namaLahan}</AppText>
           <AppText variant="small" color={Colors.muted}>
@@ -44,12 +47,32 @@ export function PlotCard({
         />
       </View>
 
-      <AppText variant="small">Petani: {farmerLabel}</AppText>
-      <AppText variant="small">Luas: {plot.luasHektar ?? '-'} ha</AppText>
-      <AppText variant="small">Radius: {plot.radiusGeofenceM} meter</AppText>
-      <AppText variant="small" color={Colors.muted}>
-        {plot.latCenter.toFixed(5)}, {plot.lngCenter.toFixed(5)}
-      </AppText>
+      <View style={styles.infoGrid}>
+        <InfoRow
+          icon="👨‍🌾"
+          label="Petani"
+          value={`Petani: ${farmerLabel}`}
+          tone="forest"
+        />
+        <InfoRow
+          icon="📐"
+          label="Luas"
+          value={`Luas: ${plot.luasHektar ?? '-'} ha`}
+          tone="sky"
+        />
+        <InfoRow
+          icon="📍"
+          label="Radius"
+          value={`Radius: ${plot.radiusGeofenceM} meter`}
+          tone="amber"
+        />
+        <InfoRow
+          icon="🛰️"
+          label="Koordinat"
+          value={`${plot.latCenter.toFixed(5)}, ${plot.lngCenter.toFixed(5)}`}
+          tone="neutral"
+        />
+      </View>
 
       <View style={styles.actions}>
         <AppButton
@@ -75,10 +98,13 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: Spacing.two,
+    gap: Spacing.three,
   },
   copy: {
     flex: 1,
+  },
+  infoGrid: {
+    gap: Spacing.two,
   },
   actions: {
     flexDirection: 'row',
