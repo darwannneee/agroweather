@@ -131,11 +131,13 @@ export type GenerationResult = {
   successCount: number;
   skippedCount: number;
   failedCount: number;
+  draftCount: number;
   warnings: GenerationWarning[];
 };
 
 type PlotOutcome = {
   kind: 'success' | 'skipped' | 'failed';
+  draftCount?: number;
   warning?: GenerationWarning;
   usage?: Record<string, unknown>;
 };
@@ -346,6 +348,7 @@ async function processPlot(
 
   return {
     kind: 'success',
+    draftCount: generated.tasks.length,
     ...(generated.usage === null ? {} : { usage: generated.usage }),
   };
 }
@@ -412,6 +415,10 @@ export async function generateDailyTasks(
   const failedCount = outcomes.filter(({ kind }) =>
     kind === 'failed'
   ).length;
+  const draftCount = outcomes.reduce(
+    (total, outcome) => total + (outcome.draftCount ?? 0),
+    0,
+  );
   const warnings = outcomes.flatMap(({ warning: item }) =>
     item === undefined ? [] : [item]
   );
@@ -438,6 +445,7 @@ export async function generateDailyTasks(
     successCount,
     skippedCount,
     failedCount,
+    draftCount,
     warnings,
   };
 }

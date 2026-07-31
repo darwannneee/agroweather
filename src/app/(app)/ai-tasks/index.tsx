@@ -27,8 +27,12 @@ import type {
 import {
   approveAiDrafts,
   fetchAiDrafts,
+  fetchLatestAiGenerationLog,
   invokeAiGeneration,
+  type AiGenerationLog,
+  type AiGenerationTargetLog,
   type GenerationInvocationResult,
+  type GenerationWarning,
 } from '@/services/ai-drafts';
 import { fetchFarmers } from '@/services/auth';
 import { fetchPlots } from '@/services/plots';
@@ -40,6 +44,20 @@ const priorityLabels: Record<TaskPriority, string> = {
   low: 'rendah',
   medium: 'sedang',
   high: 'tinggi',
+};
+const statusLabels = {
+  running: 'berjalan',
+  succeeded: 'sukses',
+  partial: 'sebagian',
+  failed: 'gagal',
+  skipped: 'dilewati',
+} as const;
+const warningMessages: Record<GenerationWarning['code'], string> = {
+  plot_unassigned: 'Lahan dilewati karena belum memiliki petani.',
+  weather_unavailable: 'Cuaca OpenWeather atau cache tidak tersedia.',
+  model_error: 'OpenRouter gagal membuat draft.',
+  invalid_model_output: 'Output OpenRouter tidak sesuai format.',
+  persistence_error: 'Draft gagal disimpan ke database.',
 };
 
 function toggleSet(current: Set<string>, id: string): Set<string> {
@@ -56,10 +74,53 @@ function generationCopy(result: GenerationInvocationResult): string {
   if (result.status === 'failed') {
     return 'Generasi gagal: belum ada draft yang dibuat.';
   }
-  if (result.status === 'partial') {
-    return `Generasi selesai sebagian: ${result.successCount} berhasil, ${result.skippedCount} dilewati, ${result.failedCount} gagal.`;
+  if (result.draftCount === 0) {
+    return `Generasi selesai tanpa draft pending: ${result.successCount} lahan diproses, tetapi AI menghasilkan 0 draft.`;
   }
-  return `Generasi selesai: ${result.successCount} draft berhasil dibuat.`;
+  if (result.status === 'partial') {
+    return `Generasi selesai sebagian: ${result.draftCount} draft pending dibuat, ${result.skippedCount} lahan dilewati, ${result.failedCount} lahan gagal.`;
+  }
+  return `Generasi selesai: ${result.draftCount} draft pending dibuat dari ${result.successCount} lahan.`;
+}
+
+function generationLogFromResult(
+  result: GenerationInvocationResult,
+  scheduledFor: string,
+  plotCount: number
+): AiGenerationLog {
+  return {
+    runId: result.runId,
+    trigger: 'manual',
+    scheduledFor,
+    status: result.status,
+    model: 'runtime',
+    plotCount,
+    successCount: result.successCount,
+    skippedCount: result.skippedCount,
+    failedCount: result.failedCount,
+    draftCount: result.draftCount,
+    warnings: result.warnings,
+    startedAt: '',
+    completedAt: null,
+    targets: [],
+  };
+}
+
+function plotNameForWarning(
+  warning: GenerationWarning,
+  plots: FarmPlot[]
+): string {
+  return plots.find((plot) => plot.id === warning.plotId)?.namaLahan
+    ?? `Lahan ${warning.plotId.slice(0, 8)}`;
+}
+
+function targetStatusCopy(target: AiGenerationTargetLog): string {
+  const status = statusLabels[target.status];
+  const summary = target.summary ? ` Ringkasan: ${target.summary}` : '';
+  const error = target.errorCode
+    ? ` Error: ${target.errorCode}.`
+    : '';
+  return `${target.plotName}: ${status}, ${target.draftCount} draft.${error}${summary}`;
 }
 
 function SelectChip({
@@ -121,6 +182,10 @@ export function AiTasksScreen() {
     null
   );
   const [generationWarningCount, setGenerationWarningCount] = useState(0);
+  const [generationLog, setGenerationLog] =
+    useState<AiGenerationLog | null>(null);
+  const [generationLogError, setGenerationLogError] =
+    useState<string | null>(null);
   const [approvalPending, setApprovalPending] = useState(false);
   const [approvalFeedback, setApprovalFeedback] = useState<string | null>(
     null
@@ -217,12 +282,31 @@ export function AiTasksScreen() {
     }
   }, [applyDrafts, scheduledFor]);
 
+  const loadGenerationLog = useCallback(async (
+    options: { preserveExistingOnEmpty?: boolean } = {}
+  ): Promise<boolean> => {
+    try {
+      const nextLog = await fetchLatestAiGenerationLog({ scheduledFor });
+      if (nextLog || !options.preserveExistingOnEmpty) {
+        setGenerationLog(nextLog);
+      }
+      setGenerationLogError(null);
+      return true;
+    } catch {
+      setGenerationLogError(
+        'Log generasi terakhir belum dapat dimuat.'
+      );
+      return false;
+    }
+  }, [scheduledFor]);
+
   useEffect(() => {
     void loadAll();
+    void loadGenerationLog();
     return () => {
       requestVersion.current += 1;
     };
-  }, [loadAll]);
+  }, [loadAll, loadGenerationLog]);
 
   async function handleGenerate() {
     if (
@@ -244,14 +328,23 @@ export function AiTasksScreen() {
     setGenerationPending(true);
     setGenerationFeedback(null);
     setGenerationWarningCount(0);
+    setGenerationLogError(null);
     try {
-      const result = await invokeAiGeneration([...selectedPlotIds]);
+      const plotIds = [...selectedPlotIds];
+      const result = await invokeAiGeneration(plotIds);
       setGenerationFeedback(generationCopy(result));
       setGenerationWarningCount(result.warnings.length);
+      setGenerationLog(
+        generationLogFromResult(result, scheduledFor, plotIds.length)
+      );
       await reloadDrafts();
+      void loadGenerationLog({ preserveExistingOnEmpty: true });
     } catch {
       setGenerationFeedback(
         'Generasi Task AI belum dapat dijalankan. Silakan coba lagi.'
+      );
+      setGenerationLogError(
+        'Request generate gagal sebelum log run tersimpan.'
       );
     } finally {
       generationActive.current = false;
@@ -429,6 +522,77 @@ export function AiTasksScreen() {
               </AppText>
             ) : null}
           </SurfaceCard>
+
+          {generationLog || generationLogError ? (
+            <SurfaceCard>
+              <AppText variant="subtitle">Log Generasi Terakhir</AppText>
+              {generationLog ? (
+                <>
+                  <AppText variant="smallStrong">
+                    Run ID: {generationLog.runId}
+                  </AppText>
+                  <AppText variant="small" color={Colors.muted}>
+                    Status: {statusLabels[generationLog.status]} · Trigger:{' '}
+                    {generationLog.trigger} · Tanggal:{' '}
+                    {generationLog.scheduledFor}
+                  </AppText>
+                  <AppText variant="small" color={Colors.muted}>
+                    Draft pending dibuat: {generationLog.draftCount}
+                  </AppText>
+                  <AppText variant="small" color={Colors.muted}>
+                    Lahan: {generationLog.successCount} sukses,{' '}
+                    {generationLog.skippedCount} dilewati,{' '}
+                    {generationLog.failedCount} gagal.
+                  </AppText>
+                  {generationLog.targets.length > 0 ? (
+                    <View style={styles.logList}>
+                      {generationLog.targets.map((target) => (
+                        <AppText
+                          key={target.id}
+                          variant="small"
+                          color={
+                            target.status === 'failed'
+                              ? Colors.dangerText
+                              : target.status === 'skipped'
+                              ? Colors.warningText
+                              : Colors.muted
+                          }
+                        >
+                          {targetStatusCopy(target)}
+                        </AppText>
+                      ))}
+                    </View>
+                  ) : null}
+                  {generationLog.warnings.length > 0 ? (
+                    <View style={styles.logList}>
+                      {generationLog.warnings.map((warning, index) => (
+                        <AppText
+                          key={`${warning.plotId}-${warning.code}-${index}`}
+                          variant="small"
+                          color={Colors.warningText}
+                        >
+                          {plotNameForWarning(warning, plots)}:{' '}
+                          {warningMessages[warning.code]} Kode:{' '}
+                          {warning.code}
+                        </AppText>
+                      ))}
+                    </View>
+                  ) : generationLog.draftCount === 0 ? (
+                    <AppText variant="small" color={Colors.warningText}>
+                      Tidak ada warning teknis. AI bisa saja mengembalikan
+                      0 task karena menilai belum ada pekerjaan aman atau
+                      urgent untuk hari ini.
+                    </AppText>
+                  ) : null}
+                </>
+              ) : null}
+              {generationLogError ? (
+                <AppText variant="small" color={Colors.dangerText}>
+                  {generationLogError}
+                </AppText>
+              ) : null}
+            </SurfaceCard>
+          ) : null}
 
           <SurfaceCard>
             <AppText variant="subtitle">Filter Draft</AppText>
@@ -648,5 +812,8 @@ const styles = StyleSheet.create({
   },
   draftRow: {
     gap: Spacing.two,
+  },
+  logList: {
+    gap: Spacing.one,
   },
 });

@@ -4,6 +4,7 @@ import {
   approveAiDraft,
   approveAiDrafts,
   fetchAiDrafts,
+  fetchLatestAiGenerationLog,
   invokeAiGeneration,
   mapAiDraftRow,
   rejectAiDraft,
@@ -116,6 +117,7 @@ test('invokes generation and maps the stable result', async () => {
       successCount: 1,
       skippedCount: 1,
       failedCount: 1,
+      draftCount: 0,
       warnings: [{ plotId: 'plot-2', code: 'model_error' }],
     },
     error: null,
@@ -129,7 +131,94 @@ test('invokes generation and maps the stable result', async () => {
   expect(invoke).toHaveBeenCalledWith('generate-daily-tasks', {
     body: { plotIds: ['plot-1', 'plot-2'] },
   });
-  expect(result).toMatchObject({ runId: 'run-1', status: 'partial' });
+  expect(result).toMatchObject({
+    runId: 'run-1',
+    status: 'partial',
+    draftCount: 0,
+  });
+});
+
+test('fetches latest generation log with per-target draft counts', async () => {
+  const runQuery = {
+    select: jest.fn(),
+    eq: jest.fn(),
+    order: jest.fn(),
+    limit: jest.fn(),
+    maybeSingle: jest.fn(),
+  };
+  runQuery.select.mockReturnValue(runQuery);
+  runQuery.eq.mockReturnValue(runQuery);
+  runQuery.order.mockReturnValue(runQuery);
+  runQuery.limit.mockReturnValue(runQuery);
+  runQuery.maybeSingle.mockResolvedValue({
+    data: {
+      id: 'run-1',
+      trigger: 'manual',
+      scheduled_for: '2026-07-30',
+      status: 'succeeded',
+      model: 'provider/model',
+      plot_count: 1,
+      success_count: 1,
+      skipped_count: 0,
+      failed_count: 0,
+      warning_summary: [],
+      started_at: '2026-07-29T22:00:00.000Z',
+      completed_at: '2026-07-29T22:00:02.000Z',
+    },
+    error: null,
+  });
+  const targetQuery = {
+    select: jest.fn(),
+    eq: jest.fn(),
+    order: jest.fn(),
+  };
+  targetQuery.select.mockReturnValue(targetQuery);
+  targetQuery.eq.mockReturnValue(targetQuery);
+  targetQuery.order.mockResolvedValue({
+    data: [{
+      id: 'target-1',
+      run_id: 'run-1',
+      lahan_id: 'plot-1',
+      scheduled_for: '2026-07-30',
+      status: 'succeeded',
+      draft_count: 0,
+      error_code: null,
+      result_summary: 'Tidak ada pekerjaan aman hari ini.',
+      is_current: true,
+      version: 2,
+      created_at: '2026-07-29T22:00:01.000Z',
+      completed_at: '2026-07-29T22:00:02.000Z',
+      lahan: { nama_lahan: 'Sawah Utara' },
+    }],
+    error: null,
+  });
+  const client = {
+    from: jest.fn((table: string) =>
+      table === 'ai_generation_runs' ? runQuery : targetQuery
+    ),
+  } as unknown as SupabaseClient;
+
+  await expect(fetchLatestAiGenerationLog({
+    scheduledFor: '2026-07-30',
+    client,
+  })).resolves.toMatchObject({
+    runId: 'run-1',
+    draftCount: 0,
+    targets: [{
+      plotName: 'Sawah Utara',
+      status: 'succeeded',
+      draftCount: 0,
+      summary: 'Tidak ada pekerjaan aman hari ini.',
+    }],
+  });
+
+  expect(client.from).toHaveBeenCalledWith('ai_generation_runs');
+  expect(client.from).toHaveBeenCalledWith('ai_generation_targets');
+  expect(runQuery.eq).toHaveBeenCalledWith(
+    'scheduled_for',
+    '2026-07-30'
+  );
+  expect(targetQuery.eq).toHaveBeenCalledWith('run_id', 'run-1');
 });
 
 test('uses constrained approval and rejection RPC payloads', async () => {

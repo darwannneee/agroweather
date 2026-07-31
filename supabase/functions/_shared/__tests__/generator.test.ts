@@ -146,6 +146,7 @@ test('fresh live weather is saved and passed into draft replacement', async () =
     successCount: 1,
     skippedCount: 0,
     failedCount: 0,
+    draftCount: 1,
   });
 });
 
@@ -283,6 +284,9 @@ test('zero-task model response still replaces pending drafts', async () => {
     }),
   );
   expect(result.successCount).toBe(1);
+  expect(result).toMatchObject({
+    draftCount: 0,
+  });
 });
 
 test('cron skips an existing successful current target without mutation', async () => {

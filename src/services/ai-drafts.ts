@@ -56,7 +56,41 @@ export type GenerationInvocationResult = {
   successCount: number;
   skippedCount: number;
   failedCount: number;
+  draftCount: number;
   warnings: GenerationWarning[];
+};
+
+type GenerationTargetStatus = 'running' | 'succeeded' | 'skipped' | 'failed';
+
+export type AiGenerationTargetLog = {
+  id: string;
+  plotId: string;
+  plotName: string;
+  status: GenerationTargetStatus;
+  draftCount: number;
+  errorCode: GenerationWarning['code'] | null;
+  summary: string | null;
+  isCurrent: boolean;
+  version: number;
+  createdAt: string;
+  completedAt: string | null;
+};
+
+export type AiGenerationLog = {
+  runId: string;
+  trigger: 'cron' | 'manual';
+  scheduledFor: string;
+  status: GenerationStatus;
+  model: string;
+  plotCount: number;
+  successCount: number;
+  skippedCount: number;
+  failedCount: number;
+  draftCount: number;
+  warnings: GenerationWarning[];
+  startedAt: string;
+  completedAt: string | null;
+  targets: AiGenerationTargetLog[];
 };
 
 export type ApproveAiDraftInput = {
@@ -70,6 +104,10 @@ export type ApproveAiDraftInput = {
 
 const DRAFT_SELECT =
   'id,lahan_id,proposed_assignee_id,scheduled_for,judul,deskripsi,priority,requires_location,ai_reason,status,model,created_at,lahan!ai_task_drafts_lahan_id_fkey(nama_lahan),proposed_assignee:users!ai_task_drafts_proposed_assignee_id_fkey(nama),weather_snapshot:weather_snapshots!ai_task_drafts_weather_snapshot_id_fkey(observed_at,current_data,forecast_data)';
+const GENERATION_RUN_SELECT =
+  'id,trigger,scheduled_for,status,model,plot_count,success_count,skipped_count,failed_count,warning_summary,started_at,completed_at';
+const GENERATION_TARGET_SELECT =
+  'id,run_id,lahan_id,scheduled_for,status,draft_count,error_code,result_summary,is_current,version,created_at,completed_at,lahan!ai_generation_targets_lahan_id_fkey(nama_lahan)';
 
 const warningCodes = new Set<GenerationWarning['code']>([
   'plot_unassigned',
@@ -103,6 +141,23 @@ function nullableBoundedNumber(
 ): number | null {
   return typeof value === 'number' && Number.isFinite(value)
     ? Math.min(maximum, Math.max(minimum, value))
+    : null;
+}
+
+function boundedInteger(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+  fallback: number
+): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(maximum, Math.max(minimum, Math.trunc(value)))
+    : fallback;
+}
+
+function safeText(value: unknown, maximum: number): string | null {
+  return typeof value === 'string' && value.trim()
+    ? value.trim().slice(0, maximum)
     : null;
 }
 
@@ -167,6 +222,21 @@ function mapWeatherSummary(
     forecastMaxRainProbability:
       probabilities.length > 0 ? Math.max(...probabilities) : null,
   };
+}
+
+function mapGenerationWarnings(value: unknown): GenerationWarning[] {
+  return Array.isArray(value)
+    ? value.slice(0, 100).flatMap((entry) => {
+        const warning = asRecord(entry);
+        return typeof warning.plotId === 'string'
+          && warningCodes.has(warning.code as GenerationWarning['code'])
+          ? [{
+              plotId: warning.plotId,
+              code: warning.code as GenerationWarning['code'],
+            }]
+          : [];
+      })
+    : [];
 }
 
 export function mapAiDraftRow(row: AiTaskDraftRow): AiTaskDraft {
@@ -245,26 +315,97 @@ function mapGenerationResult(value: unknown): GenerationInvocationResult {
   ) {
     throw new Error('GENERATION_RESPONSE_INVALID');
   }
-  const warnings = Array.isArray(row.warnings)
-    ? row.warnings.slice(0, 100).flatMap((entry) => {
-        const warning = asRecord(entry);
-        return typeof warning.plotId === 'string'
-          && warningCodes.has(warning.code as GenerationWarning['code'])
-          ? [{
-              plotId: warning.plotId,
-              code: warning.code as GenerationWarning['code'],
-            }]
-          : [];
-      })
-    : [];
 
   return {
     runId: row.runId,
     status: status as GenerationStatus,
-    successCount: boundedNumber(row.successCount, 0, 10_000, 0),
-    skippedCount: boundedNumber(row.skippedCount, 0, 10_000, 0),
-    failedCount: boundedNumber(row.failedCount, 0, 10_000, 0),
-    warnings,
+    successCount: boundedInteger(row.successCount, 0, 10_000, 0),
+    skippedCount: boundedInteger(row.skippedCount, 0, 10_000, 0),
+    failedCount: boundedInteger(row.failedCount, 0, 10_000, 0),
+    draftCount: boundedInteger(row.draftCount, 0, 10_000, 0),
+    warnings: mapGenerationWarnings(row.warnings),
+  };
+}
+
+type GenerationRunRow = {
+  id: string;
+  trigger: 'cron' | 'manual';
+  scheduled_for: string;
+  status: GenerationStatus;
+  model: string;
+  plot_count: number;
+  success_count: number;
+  skipped_count: number;
+  failed_count: number;
+  warning_summary: unknown;
+  started_at: string;
+  completed_at: string | null;
+};
+
+type GenerationTargetRow = {
+  id: string;
+  lahan_id: string;
+  status: GenerationTargetStatus;
+  draft_count: number;
+  error_code: string | null;
+  result_summary: string | null;
+  is_current: boolean;
+  version: number;
+  created_at: string;
+  completed_at: string | null;
+  lahan: PlotRelation;
+};
+
+function mapGenerationTargetLog(
+  row: GenerationTargetRow
+): AiGenerationTargetLog {
+  const plotName = relationName(row.lahan, 'nama_lahan');
+  if (!plotName) {
+    throw new Error('AI_GENERATION_TARGET_DISPLAY_DATA_MISSING');
+  }
+  const errorCode = safeText(row.error_code, 120);
+
+  return {
+    id: row.id,
+    plotId: row.lahan_id,
+    plotName,
+    status: row.status,
+    draftCount: boundedInteger(row.draft_count, 0, 5, 0),
+    errorCode: errorCode !== null
+      && warningCodes.has(errorCode as GenerationWarning['code'])
+      ? errorCode as GenerationWarning['code']
+      : null,
+    summary: safeText(row.result_summary, 2_000),
+    isCurrent: row.is_current === true,
+    version: boundedInteger(row.version, 1, 10_000, 1),
+    createdAt: row.created_at,
+    completedAt: row.completed_at,
+  };
+}
+
+function mapGenerationLog(
+  run: GenerationRunRow,
+  targets: GenerationTargetRow[]
+): AiGenerationLog {
+  return {
+    runId: run.id,
+    trigger: run.trigger,
+    scheduledFor: run.scheduled_for,
+    status: run.status,
+    model: run.model,
+    plotCount: boundedInteger(run.plot_count, 0, 10_000, 0),
+    successCount: boundedInteger(run.success_count, 0, 10_000, 0),
+    skippedCount: boundedInteger(run.skipped_count, 0, 10_000, 0),
+    failedCount: boundedInteger(run.failed_count, 0, 10_000, 0),
+    draftCount: targets.reduce(
+      (total, target) =>
+        total + boundedInteger(target.draft_count, 0, 5, 0),
+      0
+    ),
+    warnings: mapGenerationWarnings(run.warning_summary),
+    startedAt: run.started_at,
+    completedAt: run.completed_at,
+    targets: targets.map(mapGenerationTargetLog),
   };
 }
 
@@ -279,6 +420,35 @@ export async function invokeAiGeneration(
   if (error) throw error;
 
   return mapGenerationResult(data);
+}
+
+export async function fetchLatestAiGenerationLog(input: {
+  scheduledFor: string;
+  client?: SupabaseClient;
+}): Promise<AiGenerationLog | null> {
+  const client = input.client ?? supabase;
+  const runResult = await client
+    .from('ai_generation_runs')
+    .select(GENERATION_RUN_SELECT)
+    .eq('scheduled_for', input.scheduledFor)
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (runResult.error) throw runResult.error;
+  if (!runResult.data) return null;
+
+  const run = runResult.data as unknown as GenerationRunRow;
+  const targetResult = await client
+    .from('ai_generation_targets')
+    .select(GENERATION_TARGET_SELECT)
+    .eq('run_id', run.id)
+    .order('created_at', { ascending: true });
+  if (targetResult.error) throw targetResult.error;
+
+  return mapGenerationLog(
+    run,
+    (targetResult.data ?? []) as unknown as GenerationTargetRow[]
+  );
 }
 
 export async function approveAiDraft(

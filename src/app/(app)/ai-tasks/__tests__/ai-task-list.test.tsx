@@ -38,6 +38,7 @@ jest.mock('@/lib/daily-operations', () => ({
 jest.mock('@/services/ai-drafts', () => ({
   approveAiDrafts: jest.fn(),
   fetchAiDrafts: jest.fn(),
+  fetchLatestAiGenerationLog: jest.fn(),
   invokeAiGeneration: jest.fn(),
 }));
 
@@ -55,6 +56,7 @@ const routerMocks = jest.requireMock('expo-router') as {
 const draftMocks = jest.requireMock('@/services/ai-drafts') as {
   approveAiDrafts: jest.Mock;
   fetchAiDrafts: jest.Mock;
+  fetchLatestAiGenerationLog: jest.Mock;
   invokeAiGeneration: jest.Mock;
 };
 const authMocks = jest.requireMock('@/services/auth') as {
@@ -210,7 +212,7 @@ function selectPlot(name = 'Sawah Utara') {
 }
 
 function generationResult(
-  overrides: Partial<GenerationInvocationResult>
+  overrides: Partial<GenerationInvocationResult> & { draftCount?: number }
 ): GenerationInvocationResult {
   return {
     runId: 'run-1',
@@ -218,9 +220,10 @@ function generationResult(
     successCount: 2,
     skippedCount: 0,
     failedCount: 0,
+    draftCount: 2,
     warnings: [],
     ...overrides,
-  };
+  } as GenerationInvocationResult;
 }
 
 describe('AiTasksScreen', () => {
@@ -231,6 +234,8 @@ describe('AiTasksScreen', () => {
     draftMocks.approveAiDrafts.mockResolvedValue(['task-1', 'task-2']);
     draftMocks.fetchAiDrafts.mockReset();
     draftMocks.fetchAiDrafts.mockResolvedValue(drafts);
+    draftMocks.fetchLatestAiGenerationLog.mockReset();
+    draftMocks.fetchLatestAiGenerationLog.mockResolvedValue(null);
     draftMocks.invokeAiGeneration.mockReset();
     draftMocks.invokeAiGeneration.mockResolvedValue(generationResult({}));
     authMocks.fetchFarmers.mockReset();
@@ -247,6 +252,48 @@ describe('AiTasksScreen', () => {
       status: 'pending',
     });
     expect(screen.getByText('Cek pertumbuhan jagung')).toBeOnTheScreen();
+  });
+
+  test('loads the latest persisted generation log on entry', async () => {
+    draftMocks.fetchLatestAiGenerationLog.mockResolvedValue({
+      runId: 'run-latest',
+      trigger: 'manual',
+      scheduledFor: '2026-07-30',
+      status: 'succeeded',
+      model: 'provider/model',
+      plotCount: 1,
+      successCount: 1,
+      skippedCount: 0,
+      failedCount: 0,
+      draftCount: 0,
+      warnings: [],
+      startedAt: '2026-07-29T22:00:00.000Z',
+      completedAt: '2026-07-29T22:00:02.000Z',
+      targets: [{
+        id: 'target-1',
+        plotId: 'plot-1',
+        plotName: 'Sawah Utara',
+        status: 'succeeded',
+        draftCount: 0,
+        errorCode: null,
+        summary: 'Tidak ada pekerjaan aman hari ini.',
+        isCurrent: true,
+        version: 1,
+        createdAt: '2026-07-29T22:00:01.000Z',
+        completedAt: '2026-07-29T22:00:02.000Z',
+      }],
+    });
+
+    await renderLoaded();
+
+    expect(await screen.findByText('Log Generasi Terakhir')).toBeOnTheScreen();
+    expect(screen.getByText('Run ID: run-latest')).toBeOnTheScreen();
+    expect(screen.getByText('Draft pending dibuat: 0')).toBeOnTheScreen();
+    expect(
+      screen.getByText(
+        'Sawah Utara: sukses, 0 draft. Ringkasan: Tidak ada pekerjaan aman hari ini.'
+      )
+    ).toBeOnTheScreen();
   });
 
   test('offers only active assigned plots for accessible explicit selection', async () => {
@@ -324,7 +371,15 @@ describe('AiTasksScreen', () => {
   test.each([
     [
       generationResult({ status: 'succeeded', successCount: 2 }),
-      'Generasi selesai: 2 draft berhasil dibuat.',
+      'Generasi selesai: 2 draft pending dibuat dari 2 lahan.',
+    ],
+    [
+      generationResult({
+        status: 'succeeded',
+        successCount: 1,
+        draftCount: 0,
+      }),
+      'Generasi selesai tanpa draft pending: 1 lahan diproses, tetapi AI menghasilkan 0 draft.',
     ],
     [
       generationResult({
@@ -332,9 +387,10 @@ describe('AiTasksScreen', () => {
         successCount: 1,
         skippedCount: 1,
         failedCount: 1,
+        draftCount: 1,
         warnings: [{ plotId: 'plot-2', code: 'model_error' }],
       }),
-      'Generasi selesai sebagian: 1 berhasil, 1 dilewati, 1 gagal.',
+      'Generasi selesai sebagian: 1 draft pending dibuat, 1 lahan dilewati, 1 lahan gagal.',
     ],
     [
       generationResult({
@@ -364,6 +420,65 @@ describe('AiTasksScreen', () => {
       expect(screen.queryByText('model_error')).toBeNull();
     }
   );
+
+  test('shows generation log details when a successful run creates zero pending drafts', async () => {
+    draftMocks.fetchAiDrafts
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    draftMocks.invokeAiGeneration.mockResolvedValue(
+      generationResult({
+        status: 'succeeded',
+        successCount: 1,
+        draftCount: 0,
+        warnings: [],
+      })
+    );
+    render(<AiTasksScreen />);
+    await screen.findByText('Belum ada draft pending');
+    selectPlot();
+
+    fireEvent.press(
+      screen.getByRole('button', { name: 'Generate Task AI' })
+    );
+
+    expect(
+      await screen.findByText(
+        'Generasi selesai tanpa draft pending: 1 lahan diproses, tetapi AI menghasilkan 0 draft.'
+      )
+    ).toBeOnTheScreen();
+    expect(screen.getByText('Log Generasi Terakhir')).toBeOnTheScreen();
+    expect(screen.getByText('Run ID: run-1')).toBeOnTheScreen();
+    expect(screen.getByText('Draft pending dibuat: 0')).toBeOnTheScreen();
+    expect(
+      screen.getByText(
+        'Tidak ada warning teknis. AI bisa saja mengembalikan 0 task karena menilai belum ada pekerjaan aman atau urgent untuk hari ini.'
+      )
+    ).toBeOnTheScreen();
+  });
+
+  test('shows per-plot warning details after generation', async () => {
+    draftMocks.invokeAiGeneration.mockResolvedValue(
+      generationResult({
+        status: 'partial',
+        successCount: 0,
+        failedCount: 1,
+        draftCount: 0,
+        warnings: [{ plotId: 'plot-1', code: 'model_error' }],
+      })
+    );
+    await renderLoaded();
+    selectPlot();
+
+    fireEvent.press(
+      screen.getByRole('button', { name: 'Generate Task AI' })
+    );
+
+    expect(
+      await screen.findByText(
+        'Sawah Utara: OpenRouter gagal membuat draft. Kode: model_error'
+      )
+    ).toBeOnTheScreen();
+  });
 
   test('reloads pending drafts after generation completes', async () => {
     draftMocks.fetchAiDrafts
