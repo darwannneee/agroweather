@@ -217,10 +217,10 @@ tetap `null`. Jika salah satu ada, transaksi tidak benar-benar rollback: stop.
 Jangan mengganti langkah ini dengan `npm run db:reset` atau `npm run db:test`;
 keduanya memakai local Supabase/Docker dan dilarang untuk rollout ini.
 
-### 4. Terapkan forward schema secara terkontrol
+### 4. Terapkan foundation schema secara terkontrol
 
 Ambil backup/snapshot hosted sebelum perubahan. Di Dashboard SQL Editor, buka
-tiga query terpisah. Untuk masing-masing file, paste isi dari commit rilis di
+dua query terpisah. Untuk masing-masing file, paste isi dari commit rilis di
 antara transaksi berikut dan jalankan satu per satu:
 
 ```sql
@@ -233,17 +233,21 @@ Urutannya wajib:
 
 1. `0005_daily_operations_schema.sql`
 2. `0006_daily_operations_rpcs.sql`
-3. `0007_role_aware_operations_rls.sql`
 
 Jika satu tahap gagal, jangan lanjut ke tahap berikutnya. Simpan error yang sudah
 disanitasi, cek apakah transaksi rollback, lalu gunakan forward fix yang
 direview. Jangan edit migration secara ad-hoc di Dashboard.
 
+**Jangan terapkan `0007` pada tahap ini.** Migration `0007` mencabut direct
+writes yang masih dipakai binary lama. Foundation `0005`–`0006` sengaja dipasang
+lebih dulu agar binary baru yang RPC-compatible bisa dirilis tanpa langsung
+memutus binary lama.
+
 Ledger KPU tetap tidak boleh “diperbaiki” manual pada rollout ini. Setelah
 schema terverifikasi, buat pekerjaan terpisah untuk menghasilkan baseline
 ledger yang diaudit. Sampai pekerjaan itu selesai, `db push` tetap dilarang.
 
-Post-schema gate:
+Post-foundation gate:
 
 ```sql
 select
@@ -252,18 +256,64 @@ select
   to_regclass('public.ai_generation_targets') as ai_generation_targets,
   to_regclass('public.ai_task_drafts') as ai_task_drafts;
 
-select public.current_user_role(), public.is_internal();
+select routine_name
+from information_schema.routines
+where routine_schema = 'public'
+  and routine_name in (
+    'approve_ai_task_draft',
+    'check_in_attendance',
+    'register_task_evidence',
+    'replace_ai_task_drafts',
+    'review_task_evidence',
+    'start_task'
+  )
+order by routine_name;
 ```
 
-Jalankan kembali pgTAP yang sudah memiliki `begin; ... rollback;`:
+### 5. Cutover client RPC-compatible, lalu terapkan `0007`
+
+Commit rilis Expo SDK 54 harus sudah menggunakan RPC untuk absensi, transisi
+task, registrasi bukti, dan review. Lakukan langkah berikut sebelum menyentuh
+`0007`:
+
+1. Export dan uji Android, iOS, dan web dari commit rilis.
+2. Publikasikan build/update RPC-compatible ke channel produksi yang dipakai.
+3. Pastikan build tersebut sudah tersedia untuk install/update, bukan masih
+   menunggu review App Store.
+4. Tetapkan versi/commit itu sebagai minimum supported version dan umumkan
+   maintenance window. Pastikan seluruh perangkat operasional telah update atau
+   dapat dipaksa berhenti memakai binary lama.
+5. Verifikasi satu internal dan dua farmer dapat login pada build baru serta
+   melakukan absensi/task/bukti melalui RPC saat `0005`–`0006` sudah terpasang.
+
+Jika masih ada binary direct-write yang harus tetap berfungsi dan tidak ada
+mekanisme mandatory update, keputusan wajib **NO-GO**: jangan terapkan `0007`,
+jangan deploy generator, dan jangan aktifkan Cron.
+
+Pada maintenance window yang sudah disetujui, jalankan isi persis
+`0007_role_aware_operations_rls.sql` di Dashboard SQL Editor:
+
+```sql
+begin;
+-- isi persis 0007 dari commit/checksum deployment record
+commit;
+```
+
+Setelah commit, jalankan pgTAP yang sudah memiliki `begin; ... rollback;`:
 
 ```bash
 npx supabase db query --linked --file supabase/tests/database/0005_daily_operations.test.sql
 ```
 
-Hasil wajib 219/219 dan tidak meninggalkan fixture.
+Hasil wajib 219/219 dan tidak meninggalkan fixture. Ulangi role smoke dengan
+dua farmer: farmer A tidak boleh membaca/mengubah task, absensi, atau evidence
+farmer B; farmer tidak boleh memanggil RPC internal.
 
-### 5. Set secrets dan deploy Edge Function
+Setelah `0007` terpasang, **jangan pernah rollback aplikasi ke build sebelum
+cutover RPC**. Perbaikan harus berupa forward client release atau forward SQL
+yang tetap kompatibel dengan kontrak RPC/RLS.
+
+### 6. Set secrets dan deploy Edge Function
 
 Set empat secret hanya melalui Dashboard seperti pada bagian Secrets. Setelah
 nama-namanya terverifikasi, deploy hanya function yang dimaksud:
@@ -284,14 +334,14 @@ https://sxzuifhcmxakpeyqacze.supabase.co/functions/v1/generate-daily-tasks
 
 Deploy belum berarti Cron boleh aktif. Lanjut ke smoke test manual.
 
-### 6. Smoke test sebelum Cron
+### 7. Smoke test sebelum Cron
 
 Gunakan akun dan lahan uji yang dapat dibersihkan secara terkontrol. Jangan
 memakai JWT, API key, atau shared secret di screenshot/log. Catat ID run, target,
 draft, task, dan evidence—bukan token.
 
-1. Masuk sebagai internal, buka **Operasional Harian**, pilih satu lahan aktif,
-   dan generate manual. Response sukses dan draft berjumlah 0–5.
+1. Masuk sebagai internal, buka **Draft Task AI**, pilih satu lahan aktif, dan
+   tekan **Generate Task AI**. Response sukses dan draft berjumlah 0–5.
 2. Ulangi manual untuk target lahan/tanggal Jakarta yang sama. Query di bawah
    harus menunjukkan tepat satu target `is_current = true`.
 3. Coba invoke manual sebagai farmer. Hasil wajib HTTP 403 / “Akses ditolak”,
@@ -333,42 +383,95 @@ where draft.id = '<UUID_DRAFT_UJI>'
 group by draft.id, draft.status, draft.created_task_id;
 ```
 
-### 7. Buat Cron dalam keadaan nonaktif
+### 8. Buat Cron dengan binding Vault, lalu nonaktifkan
 
-Di Dashboard, aktifkan integrasi **Cron** dan buat HTTP/Edge Function job:
+Aktifkan integrasi **Cron** (`pg_cron`) dan `pg_net`. Di Dashboard **Vault**,
+buat tepat satu entry untuk masing-masing nama berikut:
 
-- Name: `agroweather-daily-ai-tasks`
-- Schedule: `0 22 * * *`
-- Method: `POST`
-- URL: project URL dari Vault ditambah
-  `/functions/v1/generate-daily-tasks`
-- Header `Content-Type`: `application/json`
-- Header `x-agroweather-cron-secret`: ambil dari Vault, jangan hard-code
-- Body: `{}`
+- `agroweather_project_url` berisi
+  `https://sxzuifhcmxakpeyqacze.supabase.co`;
+- `agroweather_cron_shared_secret` berisi nilai yang sama dengan Edge secret
+  `CRON_SHARED_SECRET`.
 
-Simpan dua nilai di Vault:
+Nilai secret dimasukkan lewat UI Vault; jangan menaruh nilainya di SQL Editor.
+Verifikasi nama dan jumlah tanpa membaca `decrypted_secret`:
 
-- URL project/function untuk KPU;
-- nilai `CRON_SHARED_SECRET` dengan nama Vault yang jelas.
+```sql
+select name, count(*) as secret_count
+from vault.secrets
+where name in (
+  'agroweather_project_url',
+  'agroweather_cron_shared_secret'
+)
+group by name
+order by name;
+```
+
+Masing-masing nama wajib tepat satu. Pastikan belum ada job bernama sama:
+
+```sql
+select jobid, jobname, schedule, active
+from cron.job
+where jobname = 'agroweather-daily-ai-tasks';
+```
+
+Hasil harus kosong. Buat job melalui SQL eksak berikut agar command tersimpan
+sebagai referensi Vault, bukan secret literal:
+
+```sql
+select cron.schedule(
+  'agroweather-daily-ai-tasks',
+  '0 22 * * *',
+  $job$
+  select net.http_post(
+    url := (
+      select decrypted_secret
+      from vault.decrypted_secrets
+      where name = 'agroweather_project_url'
+    ) || '/functions/v1/generate-daily-tasks',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-agroweather-cron-secret', (
+        select decrypted_secret
+        from vault.decrypted_secrets
+        where name = 'agroweather_cron_shared_secret'
+      )
+    ),
+    body := '{}'::jsonb
+  ) as request_id;
+  $job$
+);
+```
+
+Jangan membuat job di sekitar 21:55–22:05 UTC. Segera buka Dashboard
+**Integrations → Cron → Jobs** dan ubah toggle job menjadi **Inactive**. Verifikasi:
+
+```sql
+select jobid, jobname, schedule, active
+from cron.job
+where jobname = 'agroweather-daily-ai-tasks';
+```
+
+Gate: tepat satu row, schedule `0 22 * * *`, dan `active = false`. Jangan
+menyalin kolom `command` ke log atau deployment record.
 
 Cron Supabase memakai UTC. Ekspresi `0 22 * * *` berarti 22:00 UTC, yaitu 05:00
 WIB pada tanggal kalender berikutnya. Function tetap menghitung
 `scheduled_for` dari `Asia/Jakarta` dan tidak menerima tanggal dari request.
 
-Jika UI Dashboard mengaktifkan job saat dibuat, segera nonaktifkan sampai
-operator siap melakukan first-run. Nama job bersifat case-sensitive; jangan
-membuat job kedua dengan nama yang sama.
+Nama job bersifat case-sensitive; jangan membuat job kedua dengan nama sama.
 
-### 8. Cron first-run dan aktivasi
+### 9. Cron first-run dan aktivasi
 
 Aktifkan job pada jendela observasi. Setelah invocation pertama:
 
 ```sql
 select id, trigger, scheduled_for, status, model,
-       target_count, succeeded_count, failed_count, created_at, completed_at
+       plot_count, success_count, skipped_count, failed_count,
+       started_at, completed_at
 from public.ai_generation_runs
 where trigger = 'cron'
-order by created_at desc
+order by started_at desc
 limit 5;
 ```
 
@@ -388,10 +491,20 @@ logs pada dua jadwal pertama tanpa mencetak request header atau secret.
 Rollback dilakukan sebagai berikut:
 
 1. Nonaktifkan Cron `agroweather-daily-ai-tasks` terlebih dahulu.
-2. Biarkan Edge Function ter-deploy, tetapi hentikan seluruh pemanggilan manual
-   dan cron. Jangan menghapus function saat investigasi masih membutuhkan log.
-3. Jika masalah hanya pada aplikasi, revert commit UI/service yang relevan dan
-   rilis ulang Expo binary/update sesuai kebijakan release.
+2. Ekspor metadata/log yang sudah disanitasi, lalu enforce penghentian manual dan
+   Cron call dengan menghapus **deployment remote** function (source tetap di
+   Git dan dapat di-deploy ulang):
+
+   ```bash
+   npx supabase functions delete generate-daily-tasks --project-ref sxzuifhcmxakpeyqacze
+   ```
+
+   Rotasi `CRON_SHARED_SECRET` setelah function dihentikan. Jangan mengandalkan
+   instruksi lisan untuk “jangan klik generate”; client internal masih dapat
+   memanggil endpoint selama deployment aktif.
+3. Jika masalah hanya pada aplikasi, rilis forward fix. Revert UI/service hanya
+   boleh menuju commit yang tetap RPC-compatible. Setelah `0007`, jangan pernah
+   merilis kembali binary direct-write sebelum cutover.
 4. Jangan drop tabel operasional, task, attendance, generation run, draft, atau
    evidence. Histori bukti dan review harus tetap immutable.
 5. Jangan menjalankan down migration. Pulihkan read behavior lama hanya melalui
