@@ -3,6 +3,8 @@ export type PlotStatus = 'aktif' | 'tidak aktif';
 export type PlotFormValues = {
   namaLahan: string;
   farmerId: string | null;
+  farmerIds: string[];
+  primaryFarmerId: string | null;
   luasHektar: string;
   jenisTanaman: string;
   faseLahan: string;
@@ -26,6 +28,9 @@ export type FarmPlot = {
   namaLahan: string;
   farmerId: string | null;
   farmerName?: string | null;
+  farmerIds?: string[];
+  farmerNames?: string[];
+  primaryFarmerId?: string | null;
   luasHektar: number | null;
   jenisTanaman: string;
   faseLahan: string | null;

@@ -28,6 +28,8 @@ import type { AppUser } from '@/services/supabase';
 const EMPTY_FORM: PlotFormValues = {
   namaLahan: '',
   farmerId: null,
+  farmerIds: [],
+  primaryFarmerId: null,
   luasHektar: '',
   jenisTanaman: '',
   faseLahan: '',
@@ -55,9 +57,14 @@ function emptyErrors(): PlotFormErrors {
 }
 
 function formFromPlot(plot: FarmPlot): PlotFormValues {
+  const farmerIds = plot.farmerIds ?? (plot.farmerId ? [plot.farmerId] : []);
+  const primaryFarmerId = plot.primaryFarmerId ?? plot.farmerId ?? farmerIds[0] ?? null;
+
   return {
     namaLahan: plot.namaLahan,
-    farmerId: plot.farmerId,
+    farmerId: primaryFarmerId,
+    farmerIds,
+    primaryFarmerId,
     luasHektar: plot.luasHektar === null ? '' : String(plot.luasHektar),
     jenisTanaman: plot.jenisTanaman,
     faseLahan: plot.faseLahan ?? '',
@@ -167,19 +174,71 @@ export function PlotFormContent() {
     []
   );
 
+  const selectedFarmers = useMemo(
+    () => farmers.filter((farmer) => form.farmerIds.includes(farmer.id)),
+    [farmers, form.farmerIds]
+  );
+
+  function clearFarmerAssignments() {
+    setForm((current) => ({
+      ...current,
+      farmerId: null,
+      farmerIds: [],
+      primaryFarmerId: null,
+    }));
+  }
+
+  function toggleFarmer(farmerId: string) {
+    setForm((current) => {
+      const selected = current.farmerIds.includes(farmerId);
+      const farmerIds = selected
+        ? current.farmerIds.filter((id) => id !== farmerId)
+        : [...current.farmerIds, farmerId];
+      const primaryFarmerId = selected
+        ? current.primaryFarmerId === farmerId
+          ? farmerIds[0] ?? null
+          : current.primaryFarmerId
+        : current.primaryFarmerId ?? farmerId;
+
+      return {
+        ...current,
+        farmerIds,
+        primaryFarmerId,
+        farmerId: primaryFarmerId,
+      };
+    });
+  }
+
+  function setPrimaryFarmer(farmerId: string) {
+    setForm((current) => {
+      if (!current.farmerIds.includes(farmerId)) return current;
+      return {
+        ...current,
+        primaryFarmerId: farmerId,
+        farmerId,
+      };
+    });
+  }
+
   async function handleSave() {
-    const nextErrors = validatePlotForm(form);
+    const primaryFarmerId = form.primaryFarmerId ?? form.farmerIds[0] ?? null;
+    const payload = {
+      ...form,
+      farmerId: primaryFarmerId,
+      primaryFarmerId,
+    };
+    const nextErrors = validatePlotForm(payload);
     setErrors(nextErrors);
     if (hasErrors(nextErrors)) return;
 
     setSaving(true);
     try {
       if (plotId) {
-        await updatePlot(plotId, form);
+        await updatePlot(plotId, payload);
       } else {
-        await createPlot(form);
+        await createPlot(payload);
       }
-      setInitial(form);
+      setInitial(payload);
       setSaveComplete(true);
     } catch {
       setSaving(false);
@@ -268,30 +327,33 @@ export function PlotFormContent() {
 
       <SurfaceCard>
         <AppText variant="subtitle">Petani Penanggung Jawab</AppText>
+        <AppText variant="small" color={Colors.muted}>
+          Bisa pilih lebih dari satu petani. Petani utama dipakai sebagai default assign task.
+        </AppText>
         <View style={styles.chips}>
           <Pressable
             accessibilityLabel="Belum assign"
             accessibilityRole="button"
-            accessibilityState={{ selected: form.farmerId === null }}
-            onPress={() => setField('farmerId', null)}
-            style={[styles.chip, form.farmerId === null && styles.chipSelected]}
+            accessibilityState={{ selected: form.farmerIds.length === 0 }}
+            onPress={clearFarmerAssignments}
+            style={[styles.chip, form.farmerIds.length === 0 && styles.chipSelected]}
           >
             <AppText
               variant="smallStrong"
-              color={form.farmerId === null ? Colors.surface : Colors.ink}
+              color={form.farmerIds.length === 0 ? Colors.surface : Colors.ink}
             >
               Belum assign
             </AppText>
           </Pressable>
           {farmers.map((farmer) => {
-            const selected = form.farmerId === farmer.id;
+            const selected = form.farmerIds.includes(farmer.id);
             return (
               <Pressable
                 key={farmer.id}
                 accessibilityLabel={`Pilih ${farmer.nama}`}
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
-                onPress={() => setField('farmerId', farmer.id)}
+                onPress={() => toggleFarmer(farmer.id)}
                 style={[styles.chip, selected && styles.chipSelected]}
               >
                 <AppText
@@ -305,6 +367,37 @@ export function PlotFormContent() {
           })}
         </View>
       </SurfaceCard>
+
+      {selectedFarmers.length > 0 ? (
+        <SurfaceCard>
+          <AppText variant="subtitle">Petani Utama</AppText>
+          <AppText variant="small" color={Colors.muted}>
+            Dipakai untuk default assignee draft AI dan task manual.
+          </AppText>
+          <View style={styles.chips}>
+            {selectedFarmers.map((farmer) => {
+              const selected = form.primaryFarmerId === farmer.id;
+              return (
+                <Pressable
+                  key={farmer.id}
+                  accessibilityLabel={`Petani utama ${farmer.nama}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => setPrimaryFarmer(farmer.id)}
+                  style={[styles.chip, selected && styles.chipSelected]}
+                >
+                  <AppText
+                    variant="smallStrong"
+                    color={selected ? Colors.surface : Colors.ink}
+                  >
+                    {farmer.nama}
+                  </AppText>
+                </Pressable>
+              );
+            })}
+          </View>
+        </SurfaceCard>
+      ) : null}
 
       <SurfaceCard>
         <AppText variant="subtitle">Lokasi Lahan</AppText>

@@ -24,6 +24,10 @@ export function PlotCard({
 }: PlotCardProps) {
   const active = plot.status === 'aktif';
   const statusAction = active ? 'Nonaktifkan' : 'Aktifkan';
+  const farmerLabel =
+    plot.farmerNames && plot.farmerNames.length > 0
+      ? plot.farmerNames.join(', ')
+      : plot.farmerName ?? 'Belum diassign';
 
   return (
     <SurfaceCard accessibilityLabel={`Lahan ${plot.namaLahan}`}>
@@ -40,7 +44,7 @@ export function PlotCard({
         />
       </View>
 
-      <AppText variant="small">Petani: {plot.farmerName ?? 'Belum diassign'}</AppText>
+      <AppText variant="small">Petani: {farmerLabel}</AppText>
       <AppText variant="small">Luas: {plot.luasHektar ?? '-'} ha</AppText>
       <AppText variant="small">Radius: {plot.radiusGeofenceM} meter</AppText>
       <AppText variant="small" color={Colors.muted}>

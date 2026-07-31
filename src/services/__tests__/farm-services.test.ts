@@ -4,7 +4,13 @@ import type { PlotFormValues } from '@/lib/farm-types';
 
 import { checkInIfInsideRadius } from '../attendance';
 import { buildEvidencePath } from '../evidence';
-import { mapPlotRow, toPlotInsert, updatePlot } from '../plots';
+import { createInternalFarmer, updateInternalFarmerProfile } from '../farmer-management';
+import {
+  fetchAssignedPlots,
+  mapPlotRow,
+  toPlotInsert,
+  updatePlot,
+} from '../plots';
 import {
   createTaskForPlot,
   fetchFarmerTasks,
@@ -24,6 +30,8 @@ describe('plot service mapping', () => {
   const validForm: PlotFormValues = {
     namaLahan: 'Sawah Utara',
     farmerId: 'farmer-1',
+    farmerIds: ['farmer-1', 'farmer-2'],
+    primaryFarmerId: 'farmer-1',
     luasHektar: '2.5',
     jenisTanaman: 'Padi',
     faseLahan: 'Penyiraman',
@@ -45,12 +53,27 @@ describe('plot service mapping', () => {
         radius_geofence_m: 1000,
         fase_lahan: 'Penyiraman',
         status: 'aktif',
+        assignments: [
+          {
+            farmer_id: 'farmer-1',
+            is_primary: true,
+            farmer: { nama: 'Sari' },
+          },
+          {
+            farmer_id: 'farmer-2',
+            is_primary: false,
+            farmer: { nama: 'Budi' },
+          },
+        ],
       })
     ).toEqual({
       id: 'plot-1',
       namaLahan: 'Sawah Utara',
       farmerId: 'farmer-1',
-      farmerName: null,
+      farmerName: 'Sari',
+      farmerIds: ['farmer-1', 'farmer-2'],
+      farmerNames: ['Sari', 'Budi'],
+      primaryFarmerId: 'farmer-1',
       jenisTanaman: 'Padi',
       luasHektar: 2.5,
       latCenter: -7.25,
@@ -75,11 +98,54 @@ describe('plot service mapping', () => {
     });
   });
 
+  test('fetches active plots assigned through the multi-farmer join table', async () => {
+    const query: any = {
+      select: jest.fn(),
+      eq: jest.fn(),
+      order: jest.fn(),
+    };
+    query.select.mockReturnValue(query);
+    query.eq.mockReturnValue(query);
+    query.order.mockResolvedValue({
+      data: [{
+        id: 'plot-1',
+        nama_lahan: 'Sawah Utara',
+        farmer_id: 'farmer-2',
+        jenis_tanaman: 'Padi',
+        luas_hektar: 2,
+        lat_center: -7.25,
+        lng_center: 112.76,
+        radius_geofence_m: 1000,
+        fase_lahan: 'Vegetatif',
+        status: 'aktif',
+        assignments: [{
+          farmer_id: 'farmer-1',
+          is_primary: false,
+          farmer: { nama: 'Budi' },
+        }],
+      }],
+      error: null,
+    });
+    const client = { from: jest.fn(() => query) } as unknown as SupabaseClient;
+
+    const result = await fetchAssignedPlots('farmer-1', client);
+
+    expect(query.select.mock.calls[0][0]).toContain('lahan_petani!inner');
+    expect(query.eq).toHaveBeenCalledWith('assignments.farmer_id', 'farmer-1');
+    expect(query.eq).toHaveBeenCalledWith('status', 'aktif');
+    expect(result[0]).toMatchObject({
+      id: 'plot-1',
+      farmerIds: ['farmer-1'],
+      farmerNames: ['Budi'],
+    });
+  });
+
   test('does not reactivate a plot while updating its form fields', async () => {
     const eq = jest.fn(async () => ({ error: null }));
     const update = jest.fn((_payload: Record<string, unknown>) => ({ eq }));
     const from = jest.fn(() => ({ update }));
-    const client = { from } as unknown as SupabaseClient;
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    const client = { from, rpc } as unknown as SupabaseClient;
 
     await updatePlot('plot-1', validForm, client);
 
@@ -87,6 +153,51 @@ describe('plot service mapping', () => {
     expect(update).toHaveBeenCalledTimes(1);
     expect(update.mock.calls[0][0]).not.toHaveProperty('status');
     expect(eq).toHaveBeenCalledWith('id', 'plot-1');
+    expect(rpc).toHaveBeenCalledWith('set_plot_farmer_assignments', {
+      p_lahan_id: 'plot-1',
+      p_farmer_ids: ['farmer-1', 'farmer-2'],
+      p_primary_farmer_id: 'farmer-1',
+    });
+  });
+});
+
+describe('internal farmer management service', () => {
+  test('creates an auto-confirmed farmer through the internal RPC', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: 'farmer-1', error: null });
+    const client = { rpc } as unknown as SupabaseClient;
+
+    await expect(createInternalFarmer({
+      nama: ' Budi ',
+      email: ' BUDI@EXAMPLE.COM ',
+      password: 'password123',
+      plotIds: ['plot-1', 'plot-2'],
+    }, client)).resolves.toBe('farmer-1');
+
+    expect(rpc).toHaveBeenCalledWith('create_internal_farmer', {
+      p_nama: 'Budi',
+      p_email: 'budi@example.com',
+      p_password: 'password123',
+      p_lahan_ids: ['plot-1', 'plot-2'],
+    });
+  });
+
+  test('updates farmer profile and assignments through the internal RPC', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    const client = { rpc } as unknown as SupabaseClient;
+
+    await updateInternalFarmerProfile({
+      farmerId: 'farmer-1',
+      nama: 'Sari',
+      email: 'sari@example.com',
+      plotIds: ['plot-1'],
+    }, client);
+
+    expect(rpc).toHaveBeenCalledWith('update_internal_farmer_profile', {
+      p_farmer_id: 'farmer-1',
+      p_nama: 'Sari',
+      p_email: 'sari@example.com',
+      p_lahan_ids: ['plot-1'],
+    });
   });
 });
 

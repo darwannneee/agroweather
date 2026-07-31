@@ -10,6 +10,9 @@ import DailyOperationsRoute, {
   DailyOperationsScreen,
 } from '@/app/(app)/daily-operations';
 import PegawaiScreen, { PegawaiDashboard } from '@/app/(app)/pegawai';
+import FarmerManagementRoute, {
+  FarmerManagementScreen,
+} from '@/app/(app)/petani-management';
 import PlotListRoute, { PlotListScreen } from '@/app/(app)/penataan-lahan';
 import PlotFormRoute, {
   PlotFormContent,
@@ -44,6 +47,7 @@ jest.mock('@/services/ai-drafts', () => ({}));
 jest.mock('@/services/attendance', () => ({}));
 jest.mock('@/services/daily-operations', () => ({}));
 jest.mock('@/services/evidence', () => ({}));
+jest.mock('@/services/farmer-management', () => ({}));
 jest.mock('@/services/location', () => ({}));
 jest.mock('@/services/plots', () => ({}));
 jest.mock('@/services/tasks', () => ({}));
@@ -60,6 +64,12 @@ describe('protected role route wrappers', () => {
     ['task detail', TaskDetailRoute, TaskDetailScreen, 'farmer'],
     ['internal dashboard', PegawaiScreen, PegawaiDashboard, 'internal'],
     ['plot list', PlotListRoute, PlotListScreen, 'internal'],
+    [
+      'farmer management',
+      FarmerManagementRoute,
+      FarmerManagementScreen,
+      'internal',
+    ],
     ['plot form', PlotFormRoute, PlotFormContent, 'internal'],
     [
       'daily operations',

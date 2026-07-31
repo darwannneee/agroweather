@@ -214,6 +214,7 @@ describe('PegawaiDashboard', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Review Draft AI' }));
     fireEvent.press(screen.getByRole('button', { name: 'Operasional Harian' }));
     fireEvent.press(screen.getByRole('button', { name: 'Kelola Lahan' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Kelola Petani' }));
 
     expect(routerMocks.__push).toHaveBeenNthCalledWith(
       1,
@@ -226,6 +227,10 @@ describe('PegawaiDashboard', () => {
     expect(routerMocks.__push).toHaveBeenNthCalledWith(
       3,
       '/(app)/penataan-lahan'
+    );
+    expect(routerMocks.__push).toHaveBeenNthCalledWith(
+      4,
+      '/(app)/petani-management'
     );
   });
 

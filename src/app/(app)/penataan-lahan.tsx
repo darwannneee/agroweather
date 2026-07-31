@@ -27,7 +27,7 @@ export function PlotListScreen() {
       total: plots.length,
       active: plots.filter((plot) => plot.status === 'aktif').length,
       assigned: new Set(
-        plots.map((plot) => plot.farmerId).filter((farmerId) => farmerId !== null)
+        plots.flatMap((plot) => plot.farmerIds ?? (plot.farmerId ? [plot.farmerId] : []))
       ).size,
     }),
     [plots]

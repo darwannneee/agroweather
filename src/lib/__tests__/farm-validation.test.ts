@@ -9,6 +9,8 @@ describe('validatePlotForm', () => {
   const valid = {
     namaLahan: 'Sawah Utara',
     farmerId: 'farmer-1',
+    farmerIds: ['farmer-1'],
+    primaryFarmerId: 'farmer-1',
     luasHektar: '2.5',
     jenisTanaman: 'Padi',
     faseLahan: 'Penyiraman',

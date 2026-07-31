@@ -122,6 +122,9 @@ const existingPlot: FarmPlot = {
   namaLahan: 'Sawah Lama',
   farmerId: null,
   farmerName: null,
+  farmerIds: [],
+  farmerNames: [],
+  primaryFarmerId: null,
   luasHektar: 2.5,
   jenisTanaman: 'Padi',
   faseLahan: 'Penyiraman',
@@ -151,7 +154,20 @@ describe('PlotFormScreen', () => {
     });
     locationMocks.__reset.mockClear();
     authMocks.fetchFarmers.mockReset();
-    authMocks.fetchFarmers.mockResolvedValue([]);
+    authMocks.fetchFarmers.mockResolvedValue([
+      {
+        id: 'farmer-1',
+        nama: 'Sari',
+        email: 'sari@example.com',
+        role: 'farmer',
+      },
+      {
+        id: 'farmer-2',
+        nama: 'Budi',
+        email: 'budi@example.com',
+        role: 'farmer',
+      },
+    ]);
     plotMocks.createPlot.mockReset();
     plotMocks.createPlot.mockResolvedValue(undefined);
     plotMocks.fetchPlotById.mockReset();
@@ -205,6 +221,28 @@ describe('PlotFormScreen', () => {
       expect(routerMocks.__dismissTo).toHaveBeenCalledWith('/(app)/penataan-lahan');
     });
     expect(plotMocks.createPlot).not.toHaveBeenCalled();
+  });
+
+  test('selects multiple farmers and a primary farmer before saving a plot', async () => {
+    render(<PlotFormContent />);
+
+    expect(await screen.findByText('Tambah Lahan')).toBeOnTheScreen();
+    fillRequiredTextFields();
+    fireEvent.press(screen.getByRole('button', { name: 'Konfirmasi Titik Peta' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Pilih Sari' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Pilih Budi' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Petani utama Budi' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Simpan Lahan' }));
+
+    await waitFor(() => {
+      expect(plotMocks.createPlot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          farmerId: 'farmer-2',
+          farmerIds: ['farmer-1', 'farmer-2'],
+          primaryFarmerId: 'farmer-2',
+        })
+      );
+    });
   });
 
   test('resets edit values when the route changes to create', async () => {

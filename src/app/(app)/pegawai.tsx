@@ -210,6 +210,20 @@ export function PegawaiDashboard() {
               onPress={() => router.push('/(app)/penataan-lahan')}
             />
           </SurfaceCard>
+
+          <SurfaceCard>
+            <AppText variant="subtitle">
+              Manajemen Petani
+            </AppText>
+            <AppText variant="small" color={Colors.muted}>
+              Tambah petani auto-confirm, edit profil, dan atur lahan yang dipegang.
+            </AppText>
+            <AppButton
+              label="Kelola Petani"
+              variant="forest"
+              onPress={() => router.push('/(app)/petani-management' as Href)}
+            />
+          </SurfaceCard>
         </>
       )}
     </AppScreen>

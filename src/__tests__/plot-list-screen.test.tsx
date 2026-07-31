@@ -41,6 +41,9 @@ const plots: FarmPlot[] = [
     namaLahan: 'Sawah Utara',
     farmerId: 'farmer-1',
     farmerName: 'Sari',
+    farmerIds: ['farmer-1', 'farmer-2'],
+    farmerNames: ['Sari', 'Budi'],
+    primaryFarmerId: 'farmer-1',
     luasHektar: 2,
     jenisTanaman: 'Padi',
     faseLahan: 'Vegetatif',
@@ -54,6 +57,9 @@ const plots: FarmPlot[] = [
     namaLahan: 'Sawah Selatan',
     farmerId: 'farmer-1',
     farmerName: 'Sari',
+    farmerIds: ['farmer-1'],
+    farmerNames: ['Sari'],
+    primaryFarmerId: 'farmer-1',
     luasHektar: 1.5,
     jenisTanaman: 'Padi',
     faseLahan: 'Panen',
@@ -77,14 +83,22 @@ describe('PenataanLahanScreen', () => {
     jest.restoreAllMocks();
   });
 
-  test('counts two plots assigned to the same farmer as one assigned farmer', async () => {
+  test('counts every unique farmer assigned across multi-farmer plots', async () => {
     render(<PlotListScreen />);
 
     await screen.findByText('Sawah Utara');
 
-    expect(screen.getAllByText('1')).toHaveLength(2);
-    expect(screen.getAllByText('2')).toHaveLength(1);
+    expect(screen.getAllByText('1')).toHaveLength(1);
+    expect(screen.getAllByText('2')).toHaveLength(2);
     expect(screen.getByText('Petani')).toBeOnTheScreen();
+  });
+
+  test('shows every farmer assigned to a plot', async () => {
+    render(<PlotListScreen />);
+
+    await screen.findByText('Sawah Utara');
+
+    expect(screen.getByText('Petani: Sari, Budi')).toBeOnTheScreen();
   });
 
   test('does not render plot stats during initial loading or after a load error', async () => {
