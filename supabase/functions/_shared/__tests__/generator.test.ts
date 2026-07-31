@@ -291,6 +291,37 @@ test('cron skips an existing successful current target without mutation', async 
   expect(deps.recordTargetResult).not.toHaveBeenCalled();
 });
 
+test('cron preserves a successful target even when the plot is now unassigned', async () => {
+  const deps = dependencies({
+    listPlots: jest.fn().mockResolvedValue([{
+      ...plot,
+      farmerId: null,
+    }]),
+    findCurrentTarget: jest.fn().mockResolvedValue({
+      id: 'target-current',
+      status: 'succeeded',
+    }),
+  });
+
+  const result = await generateDailyTasks({
+    trigger: 'cron',
+    scheduledFor: '2026-07-30',
+    requestedBy: null,
+  }, deps);
+
+  expect(result).toMatchObject({
+    status: 'succeeded',
+    skippedCount: 1,
+    warnings: [],
+  });
+  expect(deps.findCurrentTarget).toHaveBeenCalledWith(
+    plot.id,
+    '2026-07-30',
+  );
+  expect(deps.recordTargetResult).not.toHaveBeenCalled();
+  expect(deps.replaceDrafts).not.toHaveBeenCalled();
+});
+
 test('manual generation replaces drafts even when a current target exists', async () => {
   const deps = dependencies({
     findCurrentTarget: jest.fn().mockResolvedValue({

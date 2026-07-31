@@ -202,16 +202,6 @@ async function processPlot(
   dependencies: GenerationDependencies,
   now: Date,
 ): Promise<PlotOutcome> {
-  if (plot.farmerId === null) {
-    return recordFailure(dependencies, {
-      runId,
-      plotId: plot.id,
-      scheduledFor: request.scheduledFor,
-      status: 'skipped',
-      code: 'plot_unassigned',
-    });
-  }
-
   if (request.trigger === 'cron') {
     try {
       const currentTarget = await dependencies.findCurrentTarget(
@@ -230,6 +220,16 @@ async function processPlot(
         code: 'persistence_error',
       });
     }
+  }
+
+  if (plot.farmerId === null) {
+    return recordFailure(dependencies, {
+      runId,
+      plotId: plot.id,
+      scheduledFor: request.scheduledFor,
+      status: 'skipped',
+      code: 'plot_unassigned',
+    });
   }
 
   let weather: NormalizedWeather;
