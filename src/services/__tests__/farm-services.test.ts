@@ -245,7 +245,7 @@ describe('task service mapping', () => {
 });
 
 describe('attendance service', () => {
-  test('keeps foreground geofence precheck and registers attendance by RPC', async () => {
+  test('reports an idempotently returned attendance row as recorded, not newly created', async () => {
     const rpc = jest.fn().mockResolvedValue({
       data: {
         id: 'attendance-1',
@@ -285,12 +285,13 @@ describe('attendance service', () => {
     });
     expect(result).toMatchObject({
       unlocked: true,
-      attendanceCreated: true,
+      attendanceRecorded: true,
       attendance: {
         id: 'attendance-1',
         farmerId: 'farmer-1',
         plotName: 'Sawah Utara',
       },
     });
+    expect(result).not.toHaveProperty('attendanceCreated');
   });
 });

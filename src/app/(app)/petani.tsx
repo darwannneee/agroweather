@@ -370,16 +370,8 @@ export function PetaniDashboard() {
       return (
         <LocationActionCard
           state="success"
-          title={
-            result.attendanceCreated
-              ? 'Kehadiran tercatat'
-              : 'Kehadiran sudah tercatat'
-          }
-          message={
-            result.attendanceCreated
-              ? `Anda berada di dalam radius ${plot.namaLahan}. Absensi berhasil disimpan.`
-              : `Anda berada di dalam radius ${plot.namaLahan}. Absensi hari ini sudah ada.`
-          }
+          title="Kehadiran terkonfirmasi"
+          message={`Anda berada di dalam radius ${plot.namaLahan}. Kehadiran hari ini terkonfirmasi.`}
           meta={`${formatDistance(result.distanceM)} dari titik lahan • Radius ${plot.radiusGeofenceM} meter`}
           actionLabel="Periksa Lagi"
           onAction={() => void checkAttendance()}

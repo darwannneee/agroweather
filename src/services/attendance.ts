@@ -6,7 +6,7 @@ import { evaluateGeofence, type Coordinates, type GeofenceResult } from '@/lib/g
 import { supabase } from './supabase';
 
 export type CheckInResult = GeofenceResult & {
-  attendanceCreated: boolean;
+  attendanceRecorded: boolean;
   attendance: AttendanceRecord | null;
 };
 
@@ -95,7 +95,7 @@ export async function checkInIfInsideRadius(input: {
   });
 
   if (!result.unlocked || !input.userLocation || result.distanceM === null) {
-    return { ...result, attendanceCreated: false, attendance: null };
+    return { ...result, attendanceRecorded: false, attendance: null };
   }
 
   const client = clientOverride ?? input.client ?? supabase;
@@ -111,7 +111,7 @@ export async function checkInIfInsideRadius(input: {
 
   return {
     ...result,
-    attendanceCreated: true,
+    attendanceRecorded: true,
     attendance: mapAttendanceRow(row, {
       plotName: input.plot.namaLahan,
     }),

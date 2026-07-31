@@ -194,7 +194,7 @@ describe('PetaniDashboard', () => {
     attendanceMocks.checkInIfInsideRadius.mockResolvedValue({
       unlocked: true,
       distanceM: 0,
-      attendanceCreated: true,
+      attendanceRecorded: true,
     });
   });
 
@@ -266,7 +266,7 @@ describe('PetaniDashboard', () => {
     const persistence = deferred<{
       unlocked: boolean;
       distanceM: number;
-      attendanceCreated: boolean;
+      attendanceRecorded: boolean;
     }>();
     attendanceMocks.checkInIfInsideRadius.mockReturnValue(persistence.promise);
     const action = await renderReady();
@@ -287,12 +287,12 @@ describe('PetaniDashboard', () => {
       persistence.resolve({
         unlocked: true,
         distanceM: 0,
-        attendanceCreated: true,
+        attendanceRecorded: true,
       });
       await persistence.promise;
     });
 
-    expect(await screen.findByText('Kehadiran tercatat')).toBeOnTheScreen();
+    expect(await screen.findByText('Kehadiran terkonfirmasi')).toBeOnTheScreen();
   });
 
   test.each([
@@ -374,7 +374,7 @@ describe('PetaniDashboard', () => {
     const action = await renderReady();
 
     fireEvent.press(action);
-    expect(await screen.findByText('Kehadiran tercatat')).toBeOnTheScreen();
+    expect(await screen.findByText('Kehadiran terkonfirmasi')).toBeOnTheScreen();
 
     const smallTask = screen.getByRole('button', {
       name: 'Buka tugas Rawat petak kecil',
@@ -387,7 +387,7 @@ describe('PetaniDashboard', () => {
     const persistence = deferred<{
       unlocked: boolean;
       distanceM: number;
-      attendanceCreated: boolean;
+      attendanceRecorded: boolean;
     }>();
     attendanceMocks.checkInIfInsideRadius.mockReturnValue(persistence.promise);
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -420,12 +420,12 @@ describe('PetaniDashboard', () => {
         persistence.resolve({
           unlocked: true,
           distanceM: 0,
-          attendanceCreated: true,
+          attendanceRecorded: true,
         });
         await persistence.promise;
       });
 
-      expect(screen.queryByText('Kehadiran tercatat')).toBeNull();
+      expect(screen.queryByText('Kehadiran terkonfirmasi')).toBeNull();
       expect(
         await screen.findByRole('button', {
           name: 'Aktifkan GPS & Cek Kehadiran',
@@ -455,29 +455,44 @@ describe('PetaniDashboard', () => {
       });
     });
     expect(attendanceMocks.checkInIfInsideRadius).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText('Kehadiran tercatat')).toBeOnTheScreen();
+    expect(await screen.findByText('Kehadiran terkonfirmasi')).toBeOnTheScreen();
   });
 
-  test('shows that an existing database attendance is not a new check-in', async () => {
+  test('uses truthful generic success copy for an idempotently returned attendance', async () => {
     attendanceMocks.checkInIfInsideRadius.mockResolvedValue({
       unlocked: true,
       distanceM: 4,
-      attendanceCreated: false,
+      attendanceRecorded: true,
     });
     const action = await renderReady();
 
     fireEvent.press(action);
 
     expect(
-      await screen.findByText('Kehadiran sudah tercatat')
+      await screen.findByText('Kehadiran terkonfirmasi')
     ).toBeOnTheScreen();
+    expect(
+      screen.getByText(
+        'Anda berada di dalam radius Sawah Dekat. Kehadiran hari ini terkonfirmasi.'
+      )
+    ).toBeOnTheScreen();
+    expect(
+      screen.queryByText(
+        'Anda berada di dalam radius Sawah Dekat. Absensi berhasil disimpan.'
+      )
+    ).toBeNull();
+    expect(
+      screen.queryByText(
+        'Anda berada di dalam radius Sawah Dekat. Absensi hari ini sudah ada.'
+      )
+    ).toBeNull();
   });
 
   test('reports an acceptable reading that is outside the plot radius', async () => {
     attendanceMocks.checkInIfInsideRadius.mockResolvedValue({
       unlocked: false,
       distanceM: 350,
-      attendanceCreated: false,
+      attendanceRecorded: false,
     });
     const action = await renderReady();
 
