@@ -8,7 +8,11 @@ import {
 } from '@testing-library/react-native';
 
 import { PetaniDashboard } from '@/app/(app)/petani';
-import type { FarmPlot, FarmTask } from '@/lib/farm-types';
+import type {
+  AttendanceRecord,
+  FarmPlot,
+  FarmTask,
+} from '@/lib/farm-types';
 import type { CurrentLocationResult } from '@/services/location';
 
 jest.mock('expo-router', () => {
@@ -24,6 +28,14 @@ jest.mock('@/components/domain/role-guard', () => {
   return {
     RoleGuard: ({ children }: { children: React.ReactNode }) =>
       React.createElement(React.Fragment, null, children),
+  };
+});
+
+jest.mock('@/lib/daily-operations', () => {
+  const actual = jest.requireActual('@/lib/daily-operations');
+  return {
+    ...actual,
+    jakartaDate: () => '2026-07-30',
   };
 });
 
@@ -67,6 +79,7 @@ jest.mock('@/services/tasks', () => ({
 
 jest.mock('@/services/attendance', () => ({
   checkInIfInsideRadius: jest.fn(),
+  fetchFarmerAttendanceForDate: jest.fn(),
 }));
 
 jest.mock('@/services/location', () => ({
@@ -91,6 +104,7 @@ const taskMocks = jest.requireMock('@/services/tasks') as {
 };
 const attendanceMocks = jest.requireMock('@/services/attendance') as {
   checkInIfInsideRadius: jest.Mock;
+  fetchFarmerAttendanceForDate: jest.Mock;
 };
 const locationMocks = jest.requireMock('@/services/location') as {
   requestCurrentLocation: jest.Mock;
@@ -125,6 +139,19 @@ const inactivePlot: FarmPlot = {
   namaLahan: 'Sawah Nonaktif',
   latCenter: -7.25001,
   status: 'tidak aktif',
+};
+
+const attendanceRecord: AttendanceRecord = {
+  id: 'attendance-1',
+  farmerId: 'farmer-1',
+  farmerName: 'Budi',
+  plotId: nearPlot.id,
+  plotName: nearPlot.namaLahan,
+  attendanceDate: '2026-07-30',
+  checkedInAt: '2026-07-29T22:42:00.000Z',
+  distanceM: 4,
+  latitude: -7.25,
+  longitude: 112.76,
 };
 
 function task(
@@ -195,14 +222,23 @@ describe('PetaniDashboard', () => {
       unlocked: true,
       distanceM: 0,
       attendanceRecorded: true,
+      attendance: null,
     });
+    attendanceMocks.fetchFarmerAttendanceForDate.mockResolvedValue(null);
   });
 
   test('loads assigned data without requesting GPS until the explicit action', async () => {
     const action = await renderReady();
 
     expect(plotMocks.fetchAssignedPlots).toHaveBeenCalledWith('farmer-1');
-    expect(taskMocks.fetchFarmerTasks).toHaveBeenCalledWith('farmer-1');
+    expect(taskMocks.fetchFarmerTasks).toHaveBeenCalledWith(
+      'farmer-1',
+      '2026-07-30'
+    );
+    expect(
+      attendanceMocks.fetchFarmerAttendanceForDate
+    ).toHaveBeenCalledWith('farmer-1', '2026-07-30');
+    expect(screen.getByText('Belum absen')).toBeOnTheScreen();
     expect(locationMocks.requestCurrentLocation).not.toHaveBeenCalled();
     expect(attendanceMocks.checkInIfInsideRadius).not.toHaveBeenCalled();
 
@@ -211,6 +247,87 @@ describe('PetaniDashboard', () => {
     await waitFor(() => {
       expect(locationMocks.requestCurrentLocation).toHaveBeenCalledTimes(1);
     });
+  });
+
+  test('renders stored attendance immediately without requesting GPS', async () => {
+    attendanceMocks.fetchFarmerAttendanceForDate.mockResolvedValue(
+      attendanceRecord
+    );
+    render(<PetaniDashboard />);
+
+    expect(
+      await screen.findByText('Sudah absen · 05:42 WIB')
+    ).toBeOnTheScreen();
+    expect(
+      screen.queryByRole('button', {
+        name: 'Aktifkan GPS & Cek Kehadiran',
+      })
+    ).toBeNull();
+    expect(locationMocks.requestCurrentLocation).not.toHaveBeenCalled();
+  });
+
+  test('updates the attendance card from a successful check-in record', async () => {
+    attendanceMocks.checkInIfInsideRadius.mockResolvedValue({
+      unlocked: true,
+      distanceM: 4,
+      attendanceRecorded: true,
+      attendance: attendanceRecord,
+    });
+    const action = await renderReady();
+
+    fireEvent.press(action);
+
+    expect(
+      await screen.findByText('Sudah absen · 05:42 WIB')
+    ).toBeOnTheScreen();
+    expect(
+      screen.queryByRole('button', { name: 'Periksa Lagi' })
+    ).toBeNull();
+  });
+
+  test('renders only the operational date tasks in evidence-aware priority order', async () => {
+    taskMocks.fetchFarmerTasks.mockResolvedValue([
+      task('task-completed', 'Task selesai', {
+        priority: 'high',
+        latestEvidence: { status: 'accepted', reviewNote: null },
+      }),
+      task('task-pending', 'Task menunggu review', {
+        priority: 'high',
+        latestEvidence: { status: 'pending', reviewNote: null },
+      }),
+      task('task-high', 'Task prioritas tinggi', {
+        priority: 'high',
+        requiresLocation: false,
+      }),
+      task('task-revision', 'Task perlu perbaikan', {
+        priority: 'low',
+        latestEvidence: {
+          status: 'revision_requested',
+          reviewNote: 'Foto terlalu gelap.',
+        },
+      }),
+      task('task-yesterday', 'Task kemarin', {
+        scheduledFor: '2026-07-29',
+      }),
+    ]);
+    await renderReady();
+
+    expect(screen.getByText('Task Hari Ini')).toBeOnTheScreen();
+    expect(screen.queryByText('Task kemarin')).toBeNull();
+    const cards = screen.getAllByRole('button', {
+      name: /^Buka tugas/,
+    });
+    expect(
+      cards.map((card) => card.props.accessibilityLabel.split(',')[0])
+    ).toEqual([
+      'Buka tugas Task perlu perbaikan',
+      'Buka tugas Task prioritas tinggi',
+      'Buka tugas Task menunggu review',
+      'Buka tugas Task selesai',
+    ]);
+    expect(within(cards[0]).getByText('Perlu perbaikan')).toBeOnTheScreen();
+    expect(within(cards[2]).getByText('Menunggu review')).toBeOnTheScreen();
+    expect(within(cards[3]).getByText('Selesai')).toBeOnTheScreen();
   });
 
   test.each([
@@ -609,10 +726,10 @@ describe('PetaniDashboard', () => {
 
     expect(screen.getByText('FIELD FIRST')).toBeOnTheScreen();
     expect(screen.getByText('Lahan aktif')).toBeOnTheScreen();
-    expect(screen.getByText('Total tugas')).toBeOnTheScreen();
-    expect(screen.getByText('Siap dikerjakan')).toBeOnTheScreen();
+    expect(screen.getByText('Task hari ini')).toBeOnTheScreen();
+    expect(screen.getByText('Task Hari Ini')).toBeOnTheScreen();
     expect(screen.getAllByText('Perlu cek lokasi').length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText('Selesai').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('Selesai')).toBeOnTheScreen();
 
     const nearTask = screen.getByRole('button', {
       name: /^Buka tugas Periksa irigasi,/,
@@ -641,7 +758,9 @@ describe('PetaniDashboard', () => {
     expect(await screen.findByText('Dashboard belum tersedia')).toBeOnTheScreen();
     fireEvent.press(screen.getByRole('button', { name: 'Coba Lagi' }));
 
-    expect(await screen.findByText('Belum ada tugas')).toBeOnTheScreen();
+    expect(
+      await screen.findByText('Belum ada task hari ini')
+    ).toBeOnTheScreen();
     expect(plotMocks.fetchAssignedPlots).toHaveBeenCalledTimes(2);
     expect(locationMocks.requestCurrentLocation).not.toHaveBeenCalled();
   });

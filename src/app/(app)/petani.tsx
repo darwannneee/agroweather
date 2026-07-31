@@ -13,7 +13,16 @@ import { ScreenHeader } from '@/components/ui/screen-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Spacing } from '@/constants/theme';
 import { useLocationAction } from '@/hooks/use-location-action';
-import type { FarmPlot, FarmTask } from '@/lib/farm-types';
+import {
+  deriveTaskOperationalState,
+  jakartaDate,
+  sortDailyTasks,
+} from '@/lib/daily-operations';
+import type {
+  AttendanceRecord,
+  FarmPlot,
+  FarmTask,
+} from '@/lib/farm-types';
 import { evaluateGeofence } from '@/lib/geofence';
 import {
   findNearestActivePlot,
@@ -23,6 +32,7 @@ import {
 } from '@/lib/location-policy';
 import {
   checkInIfInsideRadius,
+  fetchFarmerAttendanceForDate,
   type CheckInResult,
 } from '@/services/attendance';
 import { useAuth } from '@/services/auth-context';
@@ -49,6 +59,21 @@ function formatDistance(distanceM: number | null): string {
   if (distanceM === null) return 'Jarak tidak tersedia';
   if (distanceM < 1000) return `${distanceM} meter`;
   return `${(distanceM / 1000).toFixed(2)} km`;
+}
+
+function formatAttendanceTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Waktu tidak tersedia';
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jakarta',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts.map(({ type, value: partValue }) => [type, partValue])
+  );
+  return `${values.hour}:${values.minute} WIB`;
 }
 
 function readingIssueMessage(
@@ -97,6 +122,18 @@ function taskState(
   return result.unlocked ? 'ready' : 'outside';
 }
 
+function farmerTaskCardState(
+  task: FarmTask,
+  plot: FarmPlot | null,
+  reading: GrantedLocationResult | null
+): TaskCardState {
+  const operational = deriveTaskOperationalState(task);
+  if (operational === 'pending-review') return 'pending-review';
+  if (operational === 'revision-needed') return 'revision-needed';
+  if (operational === 'completed') return 'completed';
+  return taskState(task, plot, reading);
+}
+
 export function PetaniDashboard() {
   const { profile, signOut } = useAuth();
   const router = useRouter();
@@ -108,6 +145,8 @@ export function PetaniDashboard() {
   const farmerId = profile?.id;
   const [plots, setPlots] = useState<FarmPlot[]>([]);
   const [tasks, setTasks] = useState<FarmTask[]>([]);
+  const [attendance, setAttendance] =
+    useState<AttendanceRecord | null>(null);
   const [validatedReading, setValidatedReading] =
     useState<GrantedLocationResult | null>(null);
   const [attendanceOutcome, setAttendanceOutcome] =
@@ -131,24 +170,32 @@ export function PetaniDashboard() {
       if (requestVersion.current === version) {
         setPlots([]);
         setTasks([]);
+        setAttendance(null);
         setLoading(false);
       }
       return;
     }
 
     try {
-      const [nextPlots, nextTasks] = await Promise.all([
+      const date = jakartaDate();
+      const [nextPlots, nextTasks, nextAttendance] = await Promise.all([
         fetchAssignedPlots(farmerId),
-        fetchFarmerTasks(farmerId),
+        fetchFarmerTasks(farmerId, date),
+        fetchFarmerAttendanceForDate(farmerId, date),
       ]);
       if (requestVersion.current === version) {
         setPlots(nextPlots);
-        setTasks(nextTasks);
+        setTasks(
+          sortDailyTasks(
+            nextTasks.filter((task) => task.scheduledFor === date)
+          )
+        );
+        setAttendance(nextAttendance);
       }
     } catch {
       if (requestVersion.current === version) {
         setLoadError(
-          'Data lahan dan tugas belum dapat dimuat. Periksa koneksi lalu coba lagi.'
+          'Data kehadiran, lahan, dan task belum dapat dimuat. Periksa koneksi lalu coba lagi.'
         );
       }
     } finally {
@@ -179,6 +226,7 @@ export function PetaniDashboard() {
     attendanceInFlight.current = false;
     setAttendanceBusy(false);
     setAttendanceOutcome(null);
+    setAttendance(null);
     setValidatedReading(null);
     resetLocationAction();
   }, [farmerId, resetLocationAction]);
@@ -195,18 +243,14 @@ export function PetaniDashboard() {
       return {
         task: currentTask,
         plot,
-        state: taskState(currentTask, plot, validatedReading),
+        state: farmerTaskCardState(
+          currentTask,
+          plot,
+          validatedReading
+        ),
       };
     });
   }, [plots, tasks, validatedReading]);
-
-  const readyTasks = taskViewModels.filter((item) => item.state === 'ready');
-  const locationTasks = taskViewModels.filter(
-    (item) => item.state === 'check-location' || item.state === 'outside'
-  );
-  const completedTasks = taskViewModels.filter(
-    (item) => item.state === 'completed'
-  );
 
   const checkAttendance = useCallback(async () => {
     if (!farmerId || attendanceInFlight.current) return;
@@ -260,6 +304,9 @@ export function PetaniDashboard() {
           userLocation: location.coords,
         });
         if (isCurrentRequest()) {
+          if (result.attendance) {
+            setAttendance(result.attendance);
+          }
           setAttendanceOutcome({ kind: 'checked', plot: nearest.plot, result });
         }
       } catch {
@@ -308,6 +355,21 @@ export function PetaniDashboard() {
               : 'Tetap di area lahan sampai pembacaan lokasi selesai.'
           }
         />
+      );
+    }
+
+    if (attendance) {
+      return (
+        <SurfaceCard
+          accessibilityLabel={`Sudah absen pukul ${formatAttendanceTime(attendance.checkedInAt)} di ${attendance.plotName}`}
+        >
+          <AppText variant="subtitle">
+            Sudah absen · {formatAttendanceTime(attendance.checkedInAt)}
+          </AppText>
+          <AppText variant="small" color={Colors.muted}>
+            Kehadiran tercatat di {attendance.plotName}.
+          </AppText>
+        </SurfaceCard>
       );
     }
 
@@ -405,30 +467,11 @@ export function PetaniDashboard() {
     return (
       <LocationActionCard
         state="idle"
-        title="Cek lokasi saat Anda siap"
+        title="Belum absen"
         message="GPS hanya diambil setelah tombol ditekan dan tidak berjalan otomatis."
         actionLabel="Aktifkan GPS & Cek Kehadiran"
         onAction={() => void checkAttendance()}
       />
-    );
-  }
-
-  function renderTaskSection(title: string, items: TaskViewModel[]) {
-    if (items.length === 0) return null;
-    return (
-      <View style={styles.taskSection}>
-        <AppText variant="subtitle">{title}</AppText>
-        {items.map(({ task: currentTask, plot, state }) => (
-          <TaskCard
-            key={currentTask.id}
-            task={currentTask}
-            plotName={plot?.namaLahan ?? 'Lahan tidak ditemukan'}
-            state={state}
-            radiusM={plot?.radiusGeofenceM}
-            onPress={() => openTask(currentTask)}
-          />
-        ))}
-      </View>
     );
   }
 
@@ -466,24 +509,29 @@ export function PetaniDashboard() {
             <SurfaceCard style={styles.metricCard}>
               <AppText variant="title">{tasks.length}</AppText>
               <AppText variant="small" color={Colors.muted}>
-                Total tugas
+                Task hari ini
               </AppText>
             </SurfaceCard>
           </View>
 
           <View style={styles.tasks}>
-            <AppText variant="title">Tugas Saya</AppText>
+            <AppText variant="title">Task Hari Ini</AppText>
             {tasks.length === 0 ? (
               <FeedbackState
-                title="Belum ada tugas"
-                message="Tugas baru dari internal akan tampil di sini."
+                title="Belum ada task hari ini"
+                message="Task baru dari internal untuk hari ini akan tampil di sini."
               />
             ) : (
-              <>
-                {renderTaskSection('Siap dikerjakan', readyTasks)}
-                {renderTaskSection('Perlu cek lokasi', locationTasks)}
-                {renderTaskSection('Selesai', completedTasks)}
-              </>
+              taskViewModels.map(({ task: currentTask, plot, state }) => (
+                <TaskCard
+                  key={currentTask.id}
+                  task={currentTask}
+                  plotName={plot?.namaLahan ?? 'Lahan tidak ditemukan'}
+                  state={state}
+                  radiusM={plot?.radiusGeofenceM}
+                  onPress={() => openTask(currentTask)}
+                />
+              ))
             )}
           </View>
         </>
@@ -509,9 +557,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tasks: {
-    gap: Spacing.three,
-  },
-  taskSection: {
     gap: Spacing.three,
   },
 });
