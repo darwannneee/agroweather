@@ -151,6 +151,29 @@ describe('fetchOpenWeather', () => {
     }
   });
 
+  test('pins requests to OpenWeather even when an extra baseUrl is supplied', async () => {
+    const fetcher = jest
+      .fn()
+      .mockResolvedValueOnce(response(currentPayload))
+      .mockResolvedValueOnce(response({ list: [] }));
+
+    await fetchOpenWeather({
+      latitude: -7.25,
+      longitude: 112.76,
+      scheduledFor: '2026-07-30',
+      apiKey: 'secret-key',
+      fetcher,
+      baseUrl: 'https://attacker.example',
+    } as Parameters<typeof fetchOpenWeather>[0]);
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(
+      fetcher.mock.calls.every(([url]) =>
+        new URL(String(url)).origin === 'https://api.openweathermap.org'
+      ),
+    ).toBe(true);
+  });
+
   test('retries one transient response then continues to forecast', async () => {
     const fetcher = jest
       .fn()

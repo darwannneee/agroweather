@@ -68,7 +68,6 @@ type FetchOpenWeatherInput = {
   apiKey: string;
   fetcher?: WeatherFetcher;
   timeoutMs?: number;
-  baseUrl?: string;
 };
 
 type UnknownRecord = Record<string, unknown>;
@@ -254,23 +253,13 @@ export function normalizeOpenWeather(
 }
 
 function buildEndpointUrl(
-  baseUrl: string,
   endpoint: 'weather' | 'forecast',
   input: Pick<
     FetchOpenWeatherInput,
     'latitude' | 'longitude' | 'apiKey'
   >,
 ): URL {
-  let url: URL;
-  try {
-    url = new URL(`/data/2.5/${endpoint}`, baseUrl);
-  } catch {
-    throw new WeatherError('OPENWEATHER_INPUT_INVALID');
-  }
-
-  if (url.protocol !== 'https:' && url.hostname !== 'localhost') {
-    throw new WeatherError('OPENWEATHER_INPUT_INVALID');
-  }
+  const url = new URL(`/data/2.5/${endpoint}`, DEFAULT_BASE_URL);
 
   url.searchParams.set('lat', String(input.latitude));
   url.searchParams.set('lon', String(input.longitude));
@@ -368,13 +357,11 @@ function validateFetchInput(
 ): {
   apiKey: string;
   timeoutMs: number;
-  baseUrl: string;
 } {
   const apiKey = typeof input.apiKey === 'string'
     ? input.apiKey.trim()
     : '';
   const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const baseUrl = input.baseUrl ?? DEFAULT_BASE_URL;
 
   if (
     !Number.isFinite(input.latitude)
@@ -389,19 +376,17 @@ function validateFetchInput(
     || !Number.isInteger(timeoutMs)
     || timeoutMs < 1
     || timeoutMs > MAX_TIMEOUT_MS
-    || typeof baseUrl !== 'string'
-    || baseUrl.length === 0
   ) {
     throw new WeatherError('OPENWEATHER_INPUT_INVALID');
   }
 
-  return { apiKey, timeoutMs, baseUrl };
+  return { apiKey, timeoutMs };
 }
 
 export async function fetchOpenWeather(
   input: FetchOpenWeatherInput,
 ): Promise<NormalizedWeather> {
-  const { apiKey, timeoutMs, baseUrl } = validateFetchInput(input);
+  const { apiKey, timeoutMs } = validateFetchInput(input);
   const fetcher = input.fetcher ?? globalThis.fetch;
   if (typeof fetcher !== 'function') {
     throw new WeatherError('OPENWEATHER_INPUT_INVALID');
@@ -413,12 +398,12 @@ export async function fetchOpenWeather(
     apiKey,
   };
   const current = await requestJson(
-    buildEndpointUrl(baseUrl, 'weather', endpointInput),
+    buildEndpointUrl('weather', endpointInput),
     fetcher,
     timeoutMs,
   );
   const forecast = await requestJson(
-    buildEndpointUrl(baseUrl, 'forecast', endpointInput),
+    buildEndpointUrl('forecast', endpointInput),
     fetcher,
     timeoutMs,
   );
