@@ -590,6 +590,7 @@ export function AiTasksScreen() {
                   />
                   <AiDraftCard
                     draft={draft}
+                    disabled={draftApprovalBlocked}
                     onPress={() =>
                       router.push(
                         `/(app)/ai-tasks/${draft.id}` as Href

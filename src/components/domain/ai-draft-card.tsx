@@ -9,6 +9,7 @@ import type { AiTaskDraft, TaskPriority } from '@/lib/farm-types';
 type AiDraftCardProps = {
   draft: AiTaskDraft;
   onPress: () => void;
+  disabled?: boolean;
 };
 
 const priority = {
@@ -23,17 +24,24 @@ const priority = {
   }
 >;
 
-export function AiDraftCard({ draft, onPress }: AiDraftCardProps) {
+export function AiDraftCard({
+  draft,
+  onPress,
+  disabled = false,
+}: AiDraftCardProps) {
   const priorityStatus = priority[draft.priority];
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Buka draft AI ${draft.title}, lahan ${draft.plotName}, petani ${draft.proposedAssigneeName}, ${priorityStatus.label.toLowerCase()}`}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
         styles.pressTarget,
         pressed && styles.pressed,
+        disabled && styles.disabled,
       ]}
     >
       <SurfaceCard>
@@ -68,6 +76,9 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.82,
+  },
+  disabled: {
+    opacity: 0.55,
   },
   header: {
     flexDirection: 'row',

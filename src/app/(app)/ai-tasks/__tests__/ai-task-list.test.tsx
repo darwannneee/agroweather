@@ -535,6 +535,15 @@ describe('AiTasksScreen', () => {
     expect(
       screen.getByRole('button', { name: 'Muat Ulang Draft' })
     ).toBeOnTheScreen();
+    const staleDraftCard = screen.getByRole('button', {
+      name: /Buka draft AI Periksa irigasi utara/,
+    });
+    expect(staleDraftCard).toHaveProp(
+      'accessibilityState',
+      expect.objectContaining({ disabled: true })
+    );
+    fireEvent.press(staleDraftCard);
+    expect(routerMocks.__push).not.toHaveBeenCalled();
   });
 
   test('unlocks approval only after an explicit stale-draft refresh succeeds', async () => {
