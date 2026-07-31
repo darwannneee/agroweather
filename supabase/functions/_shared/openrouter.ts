@@ -166,16 +166,18 @@ function boundedProviderString(
     return invalidStructuredOutput();
   }
   const result = value.trim();
-  if (result.length < minimum || result.length > maximum) {
+  const length = Array.from(result).length;
+  if (length < minimum || length > maximum) {
     return invalidStructuredOutput();
   }
   return result;
 }
 
 function boundedContextString(value: unknown, maximum: number): string {
-  return typeof value === 'string'
-    ? value.trim().slice(0, maximum)
-    : '';
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return Array.from(value.trim()).slice(0, maximum).join('');
 }
 
 function boundedContextNumber(

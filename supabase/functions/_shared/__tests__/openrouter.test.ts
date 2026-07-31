@@ -130,6 +130,20 @@ describe('buildOpenRouterRequest', () => {
     expect(sentContext.recentTasks[0].title.length).toBeLessThanOrEqual(160);
     expect(request.messages[1].content.length).toBeLessThan(20_000);
   });
+
+  test('truncates untrusted context by Unicode code point', () => {
+    const request = buildOpenRouterRequest({
+      model: 'provider/model',
+      context: {
+        ...context,
+        plot: { ...context.plot, name: '🌾'.repeat(200) },
+      },
+    });
+    const sentContext = JSON.parse(request.messages[1].content);
+
+    expect(Array.from(sentContext.plot.name)).toHaveLength(160);
+    expect(sentContext.plot.name.endsWith('🌾')).toBe(true);
+  });
 });
 
 describe('parseOpenRouterDrafts', () => {
@@ -161,6 +175,24 @@ describe('parseOpenRouterDrafts', () => {
         ai_reason: providerDraft.reason,
       }],
     });
+  });
+
+  test('uses Unicode code points for provider string boundaries', () => {
+    expect(() =>
+      parseOpenRouterDrafts(JSON.stringify({
+        summary: 'Ringkasan valid.',
+        tasks: [{ ...providerDraft, title: '🌾x' }],
+      })),
+    ).toThrow(expect.objectContaining({
+      code: 'OPENROUTER_INVALID_STRUCTURED_OUTPUT',
+    }));
+
+    expect(
+      parseOpenRouterDrafts(JSON.stringify({
+        summary: 'Ringkasan valid.',
+        tasks: [{ ...providerDraft, title: '🌾'.repeat(120) }],
+      })).tasks[0].judul,
+    ).toBe('🌾'.repeat(120));
   });
 
   test.each([
