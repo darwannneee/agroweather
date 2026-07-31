@@ -212,13 +212,10 @@ async function processPlot(
         return { kind: 'skipped' };
       }
     } catch {
-      return recordFailure(dependencies, {
-        runId,
-        plotId: plot.id,
-        scheduledFor: request.scheduledFor,
-        status: 'failed',
-        code: 'persistence_error',
-      });
+      return {
+        kind: 'failed',
+        warning: warning(plot.id, 'persistence_error'),
+      };
     }
   }
 

@@ -322,6 +322,33 @@ test('cron preserves a successful target even when the plot is now unassigned', 
   expect(deps.replaceDrafts).not.toHaveBeenCalled();
 });
 
+test('cron lookup failure does not mutate an unknown current target', async () => {
+  const deps = dependencies({
+    findCurrentTarget: jest.fn().mockRejectedValue(
+      new Error('raw-db-message'),
+    ),
+  });
+
+  const result = await generateDailyTasks({
+    trigger: 'cron',
+    scheduledFor: '2026-07-30',
+    requestedBy: null,
+  }, deps);
+
+  expect(result).toMatchObject({
+    status: 'failed',
+    failedCount: 1,
+    warnings: [{
+      plotId: plot.id,
+      code: 'persistence_error',
+    }],
+  });
+  expect(deps.recordTargetResult).not.toHaveBeenCalled();
+  expect(deps.replaceDrafts).not.toHaveBeenCalled();
+  expect(JSON.stringify(result)).not.toContain('raw-db-message');
+  expect(deps.finishRun).toHaveBeenCalledTimes(1);
+});
+
 test('manual generation replaces drafts even when a current target exists', async () => {
   const deps = dependencies({
     findCurrentTarget: jest.fn().mockResolvedValue({
