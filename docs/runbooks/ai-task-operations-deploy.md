@@ -174,9 +174,9 @@ forward data-fix yang direview. Migration sengaja berhenti dengan
 #### Baseline schema dan ledger
 
 ```sql
-select version, name
-from supabase_migrations.schema_migrations
-order by version;
+select
+  to_regclass('supabase_migrations.schema_migrations')
+    as migration_ledger_relation;
 
 select
   to_regclass('public.users') as users,
@@ -186,8 +186,19 @@ select
   to_regclass('public.task_evidence') as task_evidence;
 ```
 
-Pada KPU, ledger kosong dengan tabel baseline yang sudah ada adalah kondisi yang
-diketahui. Ini alasan `db push` dan `migration repair` tetap dilarang.
+Jika `migration_ledger_relation` tidak `null`, jalankan query ledger berikut dan
+catat seluruh row. Jika hasilnya `null`, catat kondisi itu dan jangan menjalankan
+query ini:
+
+```sql
+select version, name
+from supabase_migrations.schema_migrations
+order by version;
+```
+
+Pada KPU, ledger kosong atau relasi ledger belum ada dengan tabel baseline yang
+sudah ada adalah kondisi yang diketahui. Ini alasan `db push` dan
+`migration repair` tetap dilarang.
 
 ### 3. Hosted rollback-only database test
 
@@ -256,19 +267,65 @@ select
   to_regclass('public.ai_generation_targets') as ai_generation_targets,
   to_regclass('public.ai_task_drafts') as ai_task_drafts;
 
-select routine_name
-from information_schema.routines
-where routine_schema = 'public'
-  and routine_name in (
-    'approve_ai_task_draft',
-    'check_in_attendance',
-    'register_task_evidence',
-    'replace_ai_task_drafts',
-    'review_task_evidence',
-    'start_task'
+with expected(routine_name) as (
+  values
+    ('approve_ai_task_draft'),
+    ('bulk_approve_ai_task_drafts'),
+    ('current_user_role'),
+    ('is_internal'),
+    ('record_ai_generation_target'),
+    ('register_attendance'),
+    ('register_task_evidence'),
+    ('reject_ai_task_draft'),
+    ('replace_ai_task_drafts'),
+    ('review_task_evidence'),
+    ('sign_up_user'),
+    ('start_assigned_task')
+), actual as (
+  select distinct routine.routine_name
+  from information_schema.routines routine
+  where routine.routine_schema = 'public'
+    and routine.routine_type = 'FUNCTION'
+    and routine.routine_name in (
+      select routine_name from expected
+      union all
+      values ('check_in_attendance'), ('start_task')
+    )
+)
+select
+  (
+    select array_agg(routine_name order by routine_name)
+    from expected
+  ) as expected_rpc_names,
+  (
+    select array_agg(routine_name order by routine_name)
+    from actual
+  ) as actual_checked_rpc_names,
+  (
+    select count(*)
+    from expected
+  ) as expected_count,
+  (
+    select count(*)
+    from actual
+  ) as actual_count,
+  not exists (
+    select routine_name from expected
+    except
+    select routine_name from actual
   )
-order by routine_name;
+  and not exists (
+    select routine_name from actual
+    except
+    select routine_name from expected
+  ) as exact_expected_set;
 ```
+
+Gate RPC lulus hanya jika `expected_count = 12`, `actual_count = 12`,
+`exact_expected_set = true`, dan `actual_checked_rpc_names` sama persis dengan
+`expected_rpc_names`. Nama attendance/start yang benar adalah
+`register_attendance` dan `start_assigned_task`; `check_in_attendance` atau
+`start_task` pada `actual_checked_rpc_names` berarti gate gagal.
 
 ### 5. Cutover client RPC-compatible, lalu terapkan `0007`
 
@@ -437,7 +494,8 @@ select cron.schedule(
         where name = 'agroweather_cron_shared_secret'
       )
     ),
-    body := '{}'::jsonb
+    body := '{}'::jsonb,
+    timeout_milliseconds := 120000
   ) as request_id;
   $job$
 );
@@ -455,6 +513,10 @@ where jobname = 'agroweather-daily-ai-tasks';
 Gate: tepat satu row, schedule `0 22 * * *`, dan `active = false`. Jangan
 menyalin kolom `command` ke log atau deployment record.
 
+Timeout `120000` ms memberi ruang untuk dua request OpenWeather (masing-masing
+dapat menunggu 8 detik), request OpenRouter (dapat menunggu 20 detik), dan kerja
+database, tetapi tetap di bawah batas wall-clock Edge Function hosted.
+
 Cron Supabase memakai UTC. Ekspresi `0 22 * * *` berarti 22:00 UTC, yaitu 05:00
 WIB pada tanggal kalender berikutnya. Function tetap menghitung
 `scheduled_for` dari `Asia/Jakarta` dan tidak menerima tanggal dari request.
@@ -464,6 +526,23 @@ Nama job bersifat case-sensitive; jangan membuat job kedua dengan nama sama.
 ### 9. Cron first-run dan aktivasi
 
 Aktifkan job pada jendela observasi. Setelah invocation pertama:
+
+Periksa hasil transport `pg_net` terlebih dahulu. `request_id` berasal dari
+hasil `net.http_post` yang dieksekusi job:
+
+```sql
+select id as request_id, status_code, timed_out, error_msg, created
+from net._http_response
+where created >= now() - interval '24 hours'
+order by created desc
+limit 20;
+```
+
+Temukan request pada waktu Cron berjalan. Gate transport: `status_code = 200`,
+`timed_out = false`, dan `error_msg is null`. Jangan menyalin kolom `content`
+atau headers ke log/deployment record.
+
+Setelah itu periksa generation run:
 
 ```sql
 select id, trigger, scheduled_for, status, model,
