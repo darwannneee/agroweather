@@ -14,8 +14,21 @@ jest.mock('expo-router', () => {
   function Stack({ children }: { children: React.ReactNode }) {
     return React.createElement(View, null, children);
   }
-  function StackScreen({ name }: { name: string }) {
-    return React.createElement(Text, { testID: 'stack-screen' }, name);
+  function StackScreen({
+    name,
+    options,
+  }: {
+    name: string;
+    options?: { title?: string };
+  }) {
+    return React.createElement(
+      Text,
+      {
+        testID: 'stack-screen',
+        accessibilityLabel: options?.title ?? '',
+      },
+      name
+    );
   }
   Stack.Screen = StackScreen;
 
@@ -140,6 +153,30 @@ describe('auth routing shell', () => {
       'penataan-lahan',
       'penataan-lahan/form',
       'task/[id]',
+      'daily-operations',
+      'ai-tasks/index',
+      'ai-tasks/[id]',
+      'task-review/[id]',
     ]);
+  });
+
+  test('registers Indonesian titles for every operational route', () => {
+    render(<AppLayout />);
+
+    const registered = Object.fromEntries(
+      screen.getAllByTestId('stack-screen').map((node) => [
+        node.props.children,
+        node.props.accessibilityLabel,
+      ])
+    );
+    expect(registered).toMatchObject({
+      petani: 'Dashboard Petani',
+      pegawai: 'Dashboard Pegawai',
+      'daily-operations': 'Operasional Harian',
+      'ai-tasks/index': 'Draft Task AI',
+      'ai-tasks/[id]': 'Review Draft AI',
+      'task/[id]': 'Detail Task',
+      'task-review/[id]': 'Review Bukti Task',
+    });
   });
 });

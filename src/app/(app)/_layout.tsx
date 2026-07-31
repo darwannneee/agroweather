@@ -37,6 +37,22 @@ export default function AppLayout() {
         options={{ title: 'Form Lahan', presentation: 'card' }}
       />
       <Stack.Screen name="task/[id]" options={{ title: 'Detail Task' }} />
+      <Stack.Screen
+        name="daily-operations"
+        options={{ title: 'Operasional Harian' }}
+      />
+      <Stack.Screen
+        name="ai-tasks/index"
+        options={{ title: 'Draft Task AI' }}
+      />
+      <Stack.Screen
+        name="ai-tasks/[id]"
+        options={{ title: 'Review Draft AI' }}
+      />
+      <Stack.Screen
+        name="task-review/[id]"
+        options={{ title: 'Review Bukti Task' }}
+      />
     </Stack>
   );
 }
