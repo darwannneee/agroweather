@@ -49,13 +49,6 @@ example
 /ios
 /android
 
-# brainstorming visual companion mockups
-.superpowers/
-
-# AI / agent tooling & specs (private, not for repo)
-.claude/
+# private project notes
 docs/
-CLAUDE.md
-AGENTS.md
-
 
