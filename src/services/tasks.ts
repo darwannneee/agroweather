@@ -189,21 +189,3 @@ export async function startTask(
   });
   if (error) throw error;
 }
-
-export async function unlockTask(
-  taskId: string,
-  client: SupabaseClient = supabase
-): Promise<void> {
-  return startTask(taskId, client);
-}
-
-export async function markTaskComplete(
-  taskId: string,
-  client: SupabaseClient = supabase
-): Promise<void> {
-  const { error } = await client
-    .from('tasks')
-    .update({ status: 'selesai' satisfies FarmTaskStatus })
-    .eq('id', taskId);
-  if (error) throw error;
-}

@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
 import {
   act,
   fireEvent,
@@ -8,7 +11,11 @@ import {
 import { Alert } from 'react-native';
 
 import { TaskDetailScreen } from '@/app/(app)/task/[id]';
-import type { FarmPlot, FarmTask } from '@/lib/farm-types';
+import type {
+  EvidenceAttempt,
+  FarmPlot,
+  FarmTask,
+} from '@/lib/farm-types';
 import type { CurrentLocationResult } from '@/services/location';
 
 jest.mock('expo-router', () => {
@@ -47,7 +54,7 @@ jest.mock('@/services/auth-context', () => ({
 }));
 
 jest.mock('@/services/evidence', () => ({
-  countTaskEvidence: jest.fn(),
+  fetchTaskEvidenceAttempts: jest.fn(),
   uploadTaskEvidence: jest.fn(),
 }));
 
@@ -62,7 +69,7 @@ jest.mock('@/services/plots', () => ({
 
 jest.mock('@/services/tasks', () => ({
   fetchTaskDetail: jest.fn(),
-  markTaskComplete: jest.fn(),
+  startTask: jest.fn(),
 }));
 
 const routerMocks = jest.requireMock('expo-router') as {
@@ -75,7 +82,7 @@ const imagePickerMocks = jest.requireMock('expo-image-picker') as {
   launchCameraAsync: jest.Mock;
 };
 const evidenceMocks = jest.requireMock('@/services/evidence') as {
-  countTaskEvidence: jest.Mock;
+  fetchTaskEvidenceAttempts: jest.Mock;
   uploadTaskEvidence: jest.Mock;
 };
 const locationMocks = jest.requireMock('@/services/location') as {
@@ -87,7 +94,7 @@ const plotMocks = jest.requireMock('@/services/plots') as {
 };
 const taskMocks = jest.requireMock('@/services/tasks') as {
   fetchTaskDetail: jest.Mock;
-  markTaskComplete: jest.Mock;
+  startTask: jest.Mock;
 };
 const alertSpy = jest.spyOn(Alert, 'alert');
 
@@ -103,7 +110,7 @@ const task: FarmTask = {
   scheduledFor: '2026-07-30',
   priority: 'medium',
   source: 'manual',
-  aiReason: null,
+  aiReason: 'Hujan tinggi membuat saluran perlu segera diperiksa.',
   requiresLocation: true,
   unlockedAt: null,
   latestEvidence: null,
@@ -122,6 +129,26 @@ const plot: FarmPlot = {
   radiusGeofenceM: 1_000,
   status: 'aktif',
 };
+
+function evidenceAttempt(
+  overrides: Partial<EvidenceAttempt> = {}
+): EvidenceAttempt {
+  return {
+    id: 'evidence-1',
+    taskId: task.id,
+    attemptNumber: 1,
+    photoPath: 'farmer-1/task-1/evidence.jpg',
+    photoUrl: 'https://signed.example/evidence-1',
+    note: 'Saluran sudah dibersihkan.',
+    latitude: -7.25,
+    longitude: 112.76,
+    status: 'pending',
+    reviewNote: null,
+    reviewedAt: null,
+    createdAt: '2026-07-30T01:00:00.000Z',
+    ...overrides,
+  };
+}
 
 function granted(
   coords = { latitude: plot.latCenter, longitude: plot.lngCenter }
@@ -172,19 +199,16 @@ describe('TaskDetailScreen', () => {
     });
     imagePickerMocks.requestCameraPermissionsAsync.mockReset();
     imagePickerMocks.launchCameraAsync.mockReset();
-    evidenceMocks.countTaskEvidence.mockReset();
-    evidenceMocks.countTaskEvidence.mockResolvedValue(0);
+    evidenceMocks.fetchTaskEvidenceAttempts.mockReset();
+    evidenceMocks.fetchTaskEvidenceAttempts.mockResolvedValue([]);
     evidenceMocks.uploadTaskEvidence.mockReset();
-    evidenceMocks.uploadTaskEvidence.mockResolvedValue({
-      id: 'evidence-1',
-      path: 'farmer-1/task-1/evidence.jpg',
-    });
+    evidenceMocks.uploadTaskEvidence.mockResolvedValue(evidenceAttempt());
     locationMocks.requestCurrentLocation.mockReset();
     locationMocks.openLocationSettings.mockReset();
     taskMocks.fetchTaskDetail.mockReset();
     taskMocks.fetchTaskDetail.mockResolvedValue(task);
-    taskMocks.markTaskComplete.mockReset();
-    taskMocks.markTaskComplete.mockResolvedValue(undefined);
+    taskMocks.startTask.mockReset();
+    taskMocks.startTask.mockResolvedValue(undefined);
     plotMocks.fetchPlotById.mockReset();
     plotMocks.fetchPlotById.mockResolvedValue(plot);
   });
@@ -195,6 +219,24 @@ describe('TaskDetailScreen', () => {
     await screen.findByRole('button', { name: 'Periksa Lokasi Task' });
 
     expect(locationMocks.requestCurrentLocation).not.toHaveBeenCalled();
+  });
+
+  test('renders task instructions, plot, priority, date, AI reason, and location requirement', async () => {
+    render(<TaskDetailScreen />);
+
+    await screen.findByText(task.judul);
+    expect(screen.getByText('Lahan: Sawah Utara')).toBeOnTheScreen();
+    expect(screen.getByText('Prioritas: Sedang')).toBeOnTheScreen();
+    expect(screen.getByText('Jadwal: 2026-07-30')).toBeOnTheScreen();
+    expect(
+      screen.getByText('Instruksi: Bersihkan saluran air di sisi utara.')
+    ).toBeOnTheScreen();
+    expect(
+      screen.getByText(
+        'Alasan AI: Hujan tinggi membuat saluran perlu segera diperiksa.'
+      )
+    ).toBeOnTheScreen();
+    expect(screen.getByText('Bukti lokasi: Wajib')).toBeOnTheScreen();
   });
 
   test('rejects a task assigned to another farmer before loading plot or evidence', async () => {
@@ -209,7 +251,7 @@ describe('TaskDetailScreen', () => {
     ).toBeOnTheScreen();
     expect(screen.queryByText(task.judul)).toBeNull();
     expect(plotMocks.fetchPlotById).not.toHaveBeenCalled();
-    expect(evidenceMocks.countTaskEvidence).not.toHaveBeenCalled();
+    expect(evidenceMocks.fetchTaskEvidenceAttempts).not.toHaveBeenCalled();
   });
 
   test('shows a controlled message instead of a raw task-detail backend error', async () => {
@@ -251,6 +293,8 @@ describe('TaskDetailScreen', () => {
     expect(locationMocks.requestCurrentLocation).toHaveBeenNthCalledWith(2, {
       maxAccuracyM: 200,
     });
+    expect(taskMocks.startTask).toHaveBeenCalledTimes(1);
+    expect(taskMocks.startTask).toHaveBeenCalledWith('task-1');
   });
 
   test('prevents an unlock recheck from overlapping a pending submission GPS check', async () => {
@@ -400,18 +444,23 @@ describe('TaskDetailScreen', () => {
     expect(JSON.stringify(alertSpy.mock.calls)).not.toContain(rawBackendError);
     expect(screen.getByDisplayValue('Draft tetap tersedia')).toBeOnTheScreen();
     expect(screen.getByText('Ganti Foto Bukti')).toBeOnTheScreen();
-    expect(taskMocks.markTaskComplete).not.toHaveBeenCalled();
+    expect(taskMocks.startTask).not.toHaveBeenCalled();
   });
 
-  test('retries only task completion after evidence upload succeeds', async () => {
-    const rawBackendError = 'tasks update violated internal database policy';
-    taskMocks.fetchTaskDetail.mockResolvedValue({
-      ...task,
-      requiresLocation: false,
-    });
-    taskMocks.markTaskComplete
-      .mockRejectedValueOnce(new Error(rawBackendError))
-      .mockResolvedValueOnce(undefined);
+  test('registers one attempt, reloads detail, and enters pending review without completing the task', async () => {
+    const pendingAttempt = evidenceAttempt();
+    taskMocks.fetchTaskDetail
+      .mockResolvedValueOnce({ ...task, requiresLocation: false })
+      .mockResolvedValueOnce({
+        ...task,
+        requiresLocation: false,
+        status: 'sedang_dikerjakan',
+        latestEvidence: { status: 'pending', reviewNote: null },
+      });
+    evidenceMocks.fetchTaskEvidenceAttempts
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([pendingAttempt]);
+    evidenceMocks.uploadTaskEvidence.mockResolvedValue(pendingAttempt);
     render(<TaskDetailScreen />);
 
     await screen.findByRole('button', { name: 'Kirim Bukti' });
@@ -424,26 +473,93 @@ describe('TaskDetailScreen', () => {
 
     expect(
       await screen.findByText(
-        'Bukti sudah tersimpan, tetapi task belum dapat diselesaikan. Coba lagi tanpa mengunggah ulang.'
+        'Bukti terkirim dan menunggu review internal'
       )
     ).toBeOnTheScreen();
-    expect(screen.queryByText(rawBackendError)).toBeNull();
-    expect(JSON.stringify(alertSpy.mock.calls)).not.toContain(rawBackendError);
-    expect(screen.getByDisplayValue('Saluran sudah bersih')).toBeOnTheScreen();
-    expect(screen.getByText('Ganti Foto Bukti')).toBeOnTheScreen();
     expect(evidenceMocks.uploadTaskEvidence).toHaveBeenCalledTimes(1);
-    expect(taskMocks.markTaskComplete).toHaveBeenCalledTimes(1);
+    expect(taskMocks.fetchTaskDetail).toHaveBeenCalledTimes(2);
+    expect(evidenceMocks.fetchTaskEvidenceAttempts).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('Percobaan 1')).toBeOnTheScreen();
+    expect(screen.queryByText('Pilih Foto Bukti')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Kirim Bukti' })).toBeNull();
+  });
 
-    fireEvent.press(
-      screen.getByRole('button', { name: 'Coba Selesaikan Task' })
-    );
-
-    await waitFor(() => {
-      expect(taskMocks.markTaskComplete).toHaveBeenCalledTimes(2);
+  test('blocks a new picker and submission while the latest attempt is pending', async () => {
+    evidenceMocks.fetchTaskEvidenceAttempts.mockResolvedValue([
+      evidenceAttempt(),
+    ]);
+    taskMocks.fetchTaskDetail.mockResolvedValue({
+      ...task,
+      status: 'sedang_dikerjakan',
+      latestEvidence: { status: 'pending', reviewNote: null },
     });
-    expect(evidenceMocks.uploadTaskEvidence).toHaveBeenCalledTimes(1);
-    expect(screen.getByDisplayValue('Saluran sudah bersih')).toBeOnTheScreen();
-    expect(screen.getByText('Ganti Foto Bukti')).toBeOnTheScreen();
+    render(<TaskDetailScreen />);
+
+    expect(
+      await screen.findByText('Menunggu review internal')
+    ).toBeOnTheScreen();
+    expect(screen.getByText('Percobaan 1')).toBeOnTheScreen();
+    expect(screen.queryByText('Pilih Foto Bukti')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Periksa Lokasi Task' })
+    ).toBeNull();
+  });
+
+  test('shows revision history and reviewer note before enabling a new attempt', async () => {
+    evidenceMocks.fetchTaskEvidenceAttempts.mockResolvedValue([
+      evidenceAttempt({
+        status: 'revision_requested',
+        reviewNote: 'Ambil foto lebih dekat ke saluran.',
+        reviewedAt: '2026-07-30T02:00:00.000Z',
+      }),
+    ]);
+    taskMocks.fetchTaskDetail.mockResolvedValue({
+      ...task,
+      status: 'sedang_dikerjakan',
+      latestEvidence: {
+        status: 'revision_requested',
+        reviewNote: 'Ambil foto lebih dekat ke saluran.',
+      },
+    });
+    render(<TaskDetailScreen />);
+
+    expect(
+      (await screen.findAllByText('Perlu perbaikan')).length
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getAllByText('Catatan reviewer: Ambil foto lebih dekat ke saluran.')
+        .length
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getByRole('button', { name: 'Periksa Lokasi Task' })
+    ).toBeOnTheScreen();
+
+    locationMocks.requestCurrentLocation.mockResolvedValueOnce(granted());
+    await unlockTask();
+    expect(screen.getByText('Pilih Foto Bukti')).toBeOnTheScreen();
+  });
+
+  test('renders accepted evidence as completed read-only history', async () => {
+    evidenceMocks.fetchTaskEvidenceAttempts.mockResolvedValue([
+      evidenceAttempt({
+        status: 'accepted',
+        reviewedAt: '2026-07-30T02:00:00.000Z',
+      }),
+    ]);
+    taskMocks.fetchTaskDetail.mockResolvedValue({
+      ...task,
+      status: 'selesai',
+      latestEvidence: { status: 'accepted', reviewNote: null },
+    });
+    render(<TaskDetailScreen />);
+
+    expect(await screen.findByText('Task selesai')).toBeOnTheScreen();
+    expect(screen.getByText('Diterima')).toBeOnTheScreen();
+    expect(screen.getByText('Percobaan 1')).toBeOnTheScreen();
+    expect(screen.queryByText('Pilih Foto Bukti')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Periksa Lokasi Task' })
+    ).toBeNull();
   });
 
   test.each(['missing accuracy', 'a stale timestamp'] as const)(
@@ -551,5 +667,21 @@ describe('TaskDetailScreen', () => {
     await screen.findByText(task.judul);
 
     expect(screen.queryByText('Analisis AI MVP')).toBeNull();
+  });
+
+  test('uses only constrained task transitions without direct completion helpers', () => {
+    const routeSource = readFileSync(
+      path.join(process.cwd(), 'src/app/(app)/task/[id].tsx'),
+      'utf8'
+    );
+    const serviceSource = readFileSync(
+      path.join(process.cwd(), 'src/services/tasks.ts'),
+      'utf8'
+    );
+
+    expect(routeSource).not.toMatch(/markTaskComplete|unlockTask/);
+    expect(serviceSource).not.toMatch(
+      /export async function (markTaskComplete|unlockTask)/
+    );
   });
 });

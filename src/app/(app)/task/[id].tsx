@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 
-import { RoleGuard } from '@/components/domain/role-guard';
+import { EvidenceAttemptCard } from '@/components/domain/evidence-attempt-card';
 import {
   EvidencePicker,
   type EvidenceAsset,
 } from '@/components/domain/evidence-picker';
 import { LocationActionCard } from '@/components/domain/location-action-card';
+import { RoleGuard } from '@/components/domain/role-guard';
 import { AppButton } from '@/components/ui/app-button';
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
@@ -15,17 +16,26 @@ import { FeedbackState } from '@/components/ui/feedback-state';
 import { FormField } from '@/components/ui/form-field';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
+import { Colors } from '@/constants/theme';
+import { useLocationAction } from '@/hooks/use-location-action';
 import { buildMvpAnalysisSummary } from '@/lib/analysis';
-import type { FarmPlot, FarmTask } from '@/lib/farm-types';
+import type {
+  EvidenceAttempt,
+  FarmPlot,
+  FarmTask,
+  TaskPriority,
+} from '@/lib/farm-types';
 import { validateEvidenceUpload } from '@/lib/farm-validation';
 import { evaluateGeofence, type GeofenceResult } from '@/lib/geofence';
 import {
   accuracyLimitForRadius,
   validateLocationReading,
 } from '@/lib/location-policy';
-import { useLocationAction } from '@/hooks/use-location-action';
 import { useAuth } from '@/services/auth-context';
-import { countTaskEvidence, uploadTaskEvidence } from '@/services/evidence';
+import {
+  fetchTaskEvidenceAttempts,
+  uploadTaskEvidence,
+} from '@/services/evidence';
 import {
   openLocationSettings,
   requestCurrentLocation,
@@ -33,7 +43,27 @@ import {
   type GrantedLocationResult,
 } from '@/services/location';
 import { fetchPlotById } from '@/services/plots';
-import { fetchTaskDetail, markTaskComplete } from '@/services/tasks';
+import { fetchTaskDetail, startTask } from '@/services/tasks';
+
+const priorityLabels: Record<TaskPriority, string> = {
+  low: 'Rendah',
+  medium: 'Sedang',
+  high: 'Tinggi',
+};
+
+const TASK_LOAD_ERROR =
+  'Detail task belum dapat dimuat. Silakan coba lagi.';
+const TASK_ASSIGNMENT_ERROR =
+  'Task ini tidak ditugaskan kepada akun Anda.';
+const EVIDENCE_UPLOAD_ERROR =
+  'Bukti belum dapat diunggah. Periksa koneksi lalu coba lagi.';
+const TASK_START_ERROR =
+  'Lokasi valid, tetapi task belum dapat dimulai. Periksa koneksi lalu coba lagi.';
+
+type LocationSettingsStatus = Extract<
+  CurrentLocationResult['status'],
+  'permission-blocked' | 'services-disabled'
+>;
 
 function formatDistance(distanceM: number | null): string {
   if (distanceM === null) return '-';
@@ -49,20 +79,6 @@ function submissionReadingErrorMessage(): string {
   return 'Akurasi GPS berubah. Bukti belum dikirim; pindah ke area terbuka lalu coba lagi.';
 }
 
-const TASK_LOAD_ERROR =
-  'Detail task belum dapat dimuat. Silakan coba lagi.';
-const TASK_ASSIGNMENT_ERROR =
-  'Task ini tidak ditugaskan kepada akun Anda.';
-const EVIDENCE_UPLOAD_ERROR =
-  'Bukti belum dapat diunggah. Periksa koneksi lalu coba lagi.';
-const TASK_COMPLETION_ERROR =
-  'Bukti sudah tersimpan, tetapi task belum dapat diselesaikan. Coba lagi tanpa mengunggah ulang.';
-
-type LocationSettingsStatus = Extract<
-  CurrentLocationResult['status'],
-  'permission-blocked' | 'services-disabled'
->;
-
 function locationSettingsStatus(
   result?: CurrentLocationResult
 ): LocationSettingsStatus | null {
@@ -75,10 +91,21 @@ function locationSettingsStatus(
   return null;
 }
 
+function mergeRegisteredAttempt(
+  attempts: EvidenceAttempt[],
+  registered: EvidenceAttempt
+): EvidenceAttempt[] {
+  const merged = attempts.some(({ id }) => id === registered.id)
+    ? attempts
+    : [...attempts, registered];
+  return [...merged].sort(
+    (a, b) => a.attemptNumber - b.attemptNumber
+  );
+}
+
 export function TaskDetailScreen() {
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id } = useLocalSearchParams<{ id?: string | string[] }>();
   const taskId = Array.isArray(id) ? id[0] : id;
-  const router = useRouter();
   const { profile } = useAuth();
   const farmerId = profile?.id;
   const {
@@ -91,23 +118,35 @@ export function TaskDetailScreen() {
   const submissionVersion = useRef(0);
   const unlockActive = useRef(false);
   const submissionActive = useRef(false);
+  const taskStarted = useRef(false);
   const [task, setTask] = useState<FarmTask | null>(null);
   const [plot, setPlot] = useState<FarmPlot | null>(null);
-  const [unlockReading, setUnlockReading] = useState<GrantedLocationResult | null>(null);
+  const [attempts, setAttempts] = useState<EvidenceAttempt[]>([]);
+  const [unlockReading, setUnlockReading] =
+    useState<GrantedLocationResult | null>(null);
   const [geofence, setGeofence] = useState<GeofenceResult | null>(null);
   const [unlocked, setUnlocked] = useState(false);
-  const [unlockLocationError, setUnlockLocationError] = useState<string | null>(null);
-  const [submitLocationError, setSubmitLocationError] = useState<string | null>(null);
+  const [unlockLocationError, setUnlockLocationError] =
+    useState<string | null>(null);
+  const [submitLocationError, setSubmitLocationError] =
+    useState<string | null>(null);
   const [submitSettingsStatus, setSubmitSettingsStatus] =
     useState<LocationSettingsStatus | null>(null);
-  const [submissionError, setSubmissionError] = useState<string | null>(null);
-  const [completionPending, setCompletionPending] = useState(false);
-  const [evidenceCount, setEvidenceCount] = useState(0);
+  const [submissionError, setSubmissionError] =
+    useState<string | null>(null);
+  const [submissionFeedback, setSubmissionFeedback] =
+    useState<string | null>(null);
   const [asset, setAsset] = useState<EvidenceAsset | null>(null);
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const latestAttempt = attempts.at(-1) ?? null;
+  const pendingReview = latestAttempt?.status === 'pending';
+  const revisionNeeded = latestAttempt?.status === 'revision_requested';
+  const completed =
+    task?.status === 'selesai' || latestAttempt?.status === 'accepted';
 
   const analysisSummary = useMemo(() => {
     if (!task || !plot) return null;
@@ -116,9 +155,9 @@ export function TaskDetailScreen() {
       cropType: plot.jenisTanaman,
       phase: plot.faseLahan,
       taskTitle: task.judul,
-      evidenceCount,
+      evidenceCount: attempts.length,
     });
-  }, [evidenceCount, plot, task]);
+  }, [attempts.length, plot, task]);
 
   const loadDetail = useCallback(async () => {
     const version = ++loadVersion.current;
@@ -126,11 +165,13 @@ export function TaskDetailScreen() {
     submissionVersion.current += 1;
     unlockActive.current = false;
     submissionActive.current = false;
+    taskStarted.current = false;
     resetLocationAction();
     setLoading(true);
     setLoadError(null);
     setTask(null);
     setPlot(null);
+    setAttempts([]);
     setUnlockReading(null);
     setGeofence(null);
     setUnlocked(false);
@@ -138,8 +179,7 @@ export function TaskDetailScreen() {
     setSubmitLocationError(null);
     setSubmitSettingsStatus(null);
     setSubmissionError(null);
-    setCompletionPending(false);
-    setEvidenceCount(0);
+    setSubmissionFeedback(null);
     setAsset(null);
     setNote('');
     setSubmitting(false);
@@ -157,19 +197,26 @@ export function TaskDetailScreen() {
         return;
       }
 
-      const [nextPlot, nextEvidenceCount] = await Promise.all([
+      const [nextPlot, nextAttempts] = await Promise.all([
         fetchPlotById(nextTask.lahanId),
-        countTaskEvidence(nextTask.id),
+        fetchTaskEvidenceAttempts(nextTask.id),
       ]);
       if (loadVersion.current !== version) return;
 
+      const nextLatest = nextAttempts.at(-1) ?? null;
+      const workflowClosed =
+        nextTask.status === 'selesai' ||
+        nextLatest?.status === 'pending' ||
+        nextLatest?.status === 'accepted';
       setTask(nextTask);
       setPlot(nextPlot);
-      setEvidenceCount(nextEvidenceCount);
-      setUnlocked(!nextTask.requiresLocation);
+      setAttempts(nextAttempts);
+      taskStarted.current = nextTask.status !== 'belum_dikerjakan';
+      setUnlocked(!nextTask.requiresLocation && !workflowClosed);
     } catch {
-      if (loadVersion.current !== version) return;
-      setLoadError(TASK_LOAD_ERROR);
+      if (loadVersion.current === version) {
+        setLoadError(TASK_LOAD_ERROR);
+      }
     } finally {
       if (loadVersion.current === version) setLoading(false);
     }
@@ -187,8 +234,7 @@ export function TaskDetailScreen() {
   }, [loadDetail]);
 
   async function handleUnlock() {
-    if (!task || !plot) return;
-    if (completionPending) return;
+    if (!task || !plot || pendingReview || completed) return;
     if (!task.requiresLocation) {
       setUnlocked(true);
       return;
@@ -234,11 +280,33 @@ export function TaskDetailScreen() {
           radiusMeters: plot.radiusGeofenceM,
         },
       });
-      setUnlockReading(result);
       setGeofence(nextGeofence);
-      setUnlocked(nextGeofence.unlocked);
+      if (!nextGeofence.unlocked) return;
+
+      if (!taskStarted.current) {
+        try {
+          await startTask(task.id);
+        } catch {
+          if (unlockVersion.current === version) {
+            setUnlockLocationError(TASK_START_ERROR);
+          }
+          return;
+        }
+        if (unlockVersion.current !== version) return;
+        taskStarted.current = true;
+        setTask((current) =>
+          current
+            ? { ...current, status: 'sedang_dikerjakan' }
+            : current
+        );
+      }
+
+      setUnlockReading(result);
+      setUnlocked(true);
     } finally {
-      if (unlockVersion.current === version) unlockActive.current = false;
+      if (unlockVersion.current === version) {
+        unlockActive.current = false;
+      }
     }
   }
 
@@ -251,41 +319,8 @@ export function TaskDetailScreen() {
   }
 
   async function handleSubmit() {
-    if (!task || !plot || !farmerId) return;
+    if (!task || !plot || !farmerId || pendingReview || completed) return;
     if (submissionActive.current || unlockActive.current) return;
-
-    if (completionPending) {
-      const version = ++submissionVersion.current;
-      submissionActive.current = true;
-      setSubmitting(true);
-      setSubmissionError(null);
-
-      try {
-        await markTaskComplete(task.id);
-        if (submissionVersion.current !== version) return;
-
-        setCompletionPending(false);
-        Alert.alert(
-          'Bukti tersimpan',
-          'Task selesai dan bukti pekerjaan sudah diunggah.',
-          [
-            {
-              text: 'OK',
-              onPress: () => router.replace('/(app)/petani'),
-            },
-          ]
-        );
-      } catch {
-        if (submissionVersion.current !== version) return;
-        setSubmissionError(TASK_COMPLETION_ERROR);
-      } finally {
-        if (submissionVersion.current === version) {
-          submissionActive.current = false;
-          setSubmitting(false);
-        }
-      }
-      return;
-    }
 
     const validation = validateEvidenceUpload({
       unlocked,
@@ -303,8 +338,8 @@ export function TaskDetailScreen() {
     setSubmitLocationError(null);
     setSubmitSettingsStatus(null);
     setSubmissionError(null);
+    setSubmissionFeedback(null);
 
-    let evidenceUploaded = false;
     try {
       let submissionLocation: GrantedLocationResult | null = unlockReading;
       if (task.requiresLocation) {
@@ -351,7 +386,7 @@ export function TaskDetailScreen() {
         submissionLocation = fresh;
       }
 
-      await uploadTaskEvidence({
+      const registered = await uploadTaskEvidence({
         taskId: task.id,
         farmerId,
         lahanId: plot.id,
@@ -362,23 +397,46 @@ export function TaskDetailScreen() {
         lng: submissionLocation?.coords.longitude ?? null,
         aiPlaceholderSummary: analysisSummary,
       });
-      evidenceUploaded = true;
-      if (submissionVersion.current === version) {
-        setCompletionPending(true);
-      }
-      await markTaskComplete(task.id);
       if (submissionVersion.current !== version) return;
 
-      setCompletionPending(false);
-      Alert.alert('Bukti tersimpan', 'Task selesai dan bukti pekerjaan sudah diunggah.', [
-        { text: 'OK', onPress: () => router.replace('/(app)/petani') },
-      ]);
+      const localAttempts = mergeRegisteredAttempt(attempts, registered);
+      setAttempts(localAttempts);
+      setTask((current) =>
+        current
+          ? {
+              ...current,
+              status: 'sedang_dikerjakan',
+              latestEvidence: { status: 'pending', reviewNote: null },
+            }
+          : current
+      );
+      setAsset(null);
+      setNote('');
+      setUnlocked(false);
+      setSubmissionFeedback(
+        'Bukti terkirim dan menunggu review internal'
+      );
+
+      try {
+        const [nextTask, nextAttempts] = await Promise.all([
+          fetchTaskDetail(task.id),
+          fetchTaskEvidenceAttempts(task.id),
+        ]);
+        if (
+          submissionVersion.current === version &&
+          nextTask.assignedTo === farmerId
+        ) {
+          setTask(nextTask);
+          setAttempts(
+            mergeRegisteredAttempt(nextAttempts, registered)
+          );
+        }
+      } catch {
+        // Registration already succeeded. Keep the local pending attempt so a
+        // stale refresh cannot expose another upload action.
+      }
     } catch {
-      if (submissionVersion.current !== version) return;
-      if (evidenceUploaded) {
-        setCompletionPending(true);
-        setSubmissionError(TASK_COMPLETION_ERROR);
-      } else {
+      if (submissionVersion.current === version) {
         setSubmissionError(EVIDENCE_UPLOAD_ERROR);
       }
     } finally {
@@ -390,7 +448,7 @@ export function TaskDetailScreen() {
   }
 
   function renderTaskLocationCard() {
-    if (!task?.requiresLocation) return null;
+    if (!task?.requiresLocation || pendingReview || completed) return null;
 
     if (locationActionState.status === 'checking') {
       return (
@@ -406,7 +464,7 @@ export function TaskDetailScreen() {
       return (
         <LocationActionCard
           state="warning"
-          title="Akurasi GPS belum cukup baik"
+          title="Task belum siap"
           message={unlockLocationError}
           actionLabel="Periksa Lagi"
           onAction={handleUnlock}
@@ -414,19 +472,15 @@ export function TaskDetailScreen() {
       );
     }
 
-    if (geofence?.unlocked) {
+    if (geofence?.unlocked && unlocked) {
       return (
         <LocationActionCard
           state="success"
           title="Task siap dikerjakan"
           message="Lokasi Anda sudah berada di dalam radius lahan."
           meta={`Jarak ke lahan ${formatDistance(geofence.distanceM)}`}
-          actionLabel={
-            submitting || completionPending ? undefined : 'Periksa Lagi'
-          }
-          onAction={
-            submitting || completionPending ? undefined : handleUnlock
-          }
+          actionLabel={submitting ? undefined : 'Periksa Lagi'}
+          onAction={submitting ? undefined : handleUnlock}
         />
       );
     }
@@ -498,9 +552,7 @@ export function TaskDetailScreen() {
           title="Detail task belum tersedia"
           message={loadError}
           actionLabel="Coba Lagi"
-          onAction={() => {
-            void loadDetail();
-          }}
+          onAction={() => void loadDetail()}
         />
       ) : !task || !plot ? (
         <FeedbackState
@@ -510,21 +562,79 @@ export function TaskDetailScreen() {
       ) : (
         <>
           <ScreenHeader
-            eyebrow="Detail Tugas"
+            eyebrow="Detail Task"
             title={task.judul}
             description={`${plot.namaLahan} · ${plot.jenisTanaman}`}
           />
 
-          {renderTaskLocationCard()}
-
           <SurfaceCard>
-            <AppText variant="subtitle">Instruksi</AppText>
-            <AppText>
-              {task.deskripsi ?? 'Kerjakan sesuai arahan internal.'}
+            <AppText variant="subtitle">Ringkasan Task</AppText>
+            <AppText variant="small">Lahan: {plot.namaLahan}</AppText>
+            <AppText variant="small">
+              Prioritas: {priorityLabels[task.priority]}
+            </AppText>
+            <AppText variant="small">Jadwal: {task.scheduledFor}</AppText>
+            <AppText variant="small">
+              Instruksi: {task.deskripsi ?? 'Kerjakan sesuai arahan internal.'}
+            </AppText>
+            {task.aiReason ? (
+              <AppText variant="small">Alasan AI: {task.aiReason}</AppText>
+            ) : null}
+            <AppText variant="small">
+              Bukti lokasi: {task.requiresLocation ? 'Wajib' : 'Tidak diwajibkan'}
             </AppText>
           </SurfaceCard>
 
-          {unlocked ? (
+          {attempts.length > 0 ? (
+            <>
+              <AppText variant="title">Riwayat Bukti</AppText>
+              {attempts.map((attempt) => (
+                <EvidenceAttemptCard key={attempt.id} attempt={attempt} />
+              ))}
+            </>
+          ) : null}
+
+          {completed ? (
+            <SurfaceCard>
+              <AppText variant="subtitle" color={Colors.successText}>
+                Task selesai
+              </AppText>
+              <AppText variant="small">
+                Bukti telah diterima internal. Riwayat tetap dapat dilihat.
+              </AppText>
+            </SurfaceCard>
+          ) : pendingReview ? (
+            <SurfaceCard>
+              <AppText variant="subtitle">Menunggu review internal</AppText>
+              <AppText variant="small">
+                Bukti terbaru sedang diperiksa. Pengiriman baru akan tersedia
+                jika internal meminta perbaikan.
+              </AppText>
+            </SurfaceCard>
+          ) : revisionNeeded ? (
+            <SurfaceCard>
+              <AppText variant="subtitle" color={Colors.dangerText}>
+                Perlu perbaikan
+              </AppText>
+              <AppText variant="small">
+                Catatan reviewer: {latestAttempt.reviewNote ?? 'Perbaiki bukti lalu kirim kembali.'}
+              </AppText>
+            </SurfaceCard>
+          ) : null}
+
+          {submissionFeedback ? (
+            <AppText
+              variant="smallStrong"
+              color={Colors.successText}
+              accessibilityLiveRegion="polite"
+            >
+              {submissionFeedback}
+            </AppText>
+          ) : null}
+
+          {renderTaskLocationCard()}
+
+          {unlocked && !pendingReview && !completed ? (
             <>
               <SurfaceCard>
                 <AppText variant="subtitle">Foto Bukti</AppText>
@@ -532,9 +642,7 @@ export function TaskDetailScreen() {
                   asset={asset}
                   onChange={setAsset}
                   disabled={
-                    submitting ||
-                    completionPending ||
-                    locationActionState.status === 'checking'
+                    submitting || locationActionState.status === 'checking'
                   }
                 />
               </SurfaceCard>
@@ -548,7 +656,6 @@ export function TaskDetailScreen() {
                   multiline: true,
                   editable:
                     !submitting &&
-                    !completionPending &&
                     locationActionState.status !== 'checking',
                 }}
               />
@@ -572,19 +679,13 @@ export function TaskDetailScreen() {
               {submissionError ? (
                 <LocationActionCard
                   state="warning"
-                  title={
-                    completionPending
-                      ? 'Bukti tersimpan, task belum selesai'
-                      : 'Bukti belum tersimpan'
-                  }
+                  title="Bukti belum tersimpan"
                   message={submissionError}
                 />
               ) : null}
               <AppButton
                 label={
-                  completionPending
-                    ? 'Coba Selesaikan Task'
-                    : task.requiresLocation
+                  task.requiresLocation
                     ? 'Periksa GPS & Kirim Bukti'
                     : 'Kirim Bukti'
                 }
