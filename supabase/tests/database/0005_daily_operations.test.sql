@@ -3149,6 +3149,8 @@ create temporary table task8_cron_replace_result (
   target_id uuid not null
 ) on commit drop;
 
+grant insert on task8_cron_replace_result to service_role;
+
 set local role service_role;
 
 insert into task8_cron_replace_result (target_id)
@@ -3224,6 +3226,8 @@ select is(
 create temporary table task8_cron_record_result (
   target_id uuid not null
 ) on commit drop;
+
+grant insert on task8_cron_record_result to service_role;
 
 set local role service_role;
 
