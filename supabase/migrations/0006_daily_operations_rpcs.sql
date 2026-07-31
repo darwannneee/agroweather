@@ -186,6 +186,7 @@ declare
   plot public.lahan%rowtype;
   snapshot public.weather_snapshots%rowtype;
   existing_target public.ai_generation_targets%rowtype;
+  current_succeeded_target_id uuid;
   previous_target_id uuid;
   next_version integer;
   target_id uuid;
@@ -326,6 +327,21 @@ begin
     or generation_run.model <> normalized_model
   then
     raise exception 'GENERATION_RUN_INVALID';
+  end if;
+
+  if generation_run.trigger = 'cron' then
+    select current_target.id
+    into current_succeeded_target_id
+    from public.ai_generation_targets current_target
+    where current_target.lahan_id = p_lahan_id
+      and current_target.scheduled_for = p_scheduled_for
+      and current_target.is_current
+      and current_target.status = 'succeeded'
+    for update;
+
+    if found then
+      return current_succeeded_target_id;
+    end if;
   end if;
 
   select candidate.*
@@ -491,6 +507,7 @@ declare
   plot public.lahan%rowtype;
   snapshot public.weather_snapshots%rowtype;
   existing_target public.ai_generation_targets%rowtype;
+  current_succeeded_target_id uuid;
   previous_target_id uuid;
   next_version integer;
   target_id uuid;
@@ -569,6 +586,21 @@ begin
     or generation_run.scheduled_for <> p_scheduled_for
   then
     raise exception 'GENERATION_RUN_INVALID';
+  end if;
+
+  if generation_run.trigger = 'cron' then
+    select current_target.id
+    into current_succeeded_target_id
+    from public.ai_generation_targets current_target
+    where current_target.lahan_id = p_lahan_id
+      and current_target.scheduled_for = p_scheduled_for
+      and current_target.is_current
+      and current_target.status = 'succeeded'
+    for update;
+
+    if found then
+      return current_succeeded_target_id;
+    end if;
   end if;
 
   select candidate.*

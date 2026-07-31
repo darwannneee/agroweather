@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(210);
+select plan(219);
 
 select has_table('public', 'weather_snapshots', 'weather snapshots exist');
 select has_table('public', 'ai_generation_runs', 'generation runs exist');
@@ -3085,6 +3085,217 @@ select is(
 );
 
 reset role;
+
+create temporary table task8_cron_guard_baseline
+on commit drop
+as
+select
+  target.id,
+  target.version,
+  target.run_id,
+  (
+    select count(*)
+    from public.ai_task_drafts draft
+    where draft.generation_target_id = target.id
+  ) as draft_count,
+  (
+    select count(*)
+    from public.ai_task_drafts draft
+    where draft.generation_target_id = target.id
+      and draft.status = 'pending'
+  ) as pending_draft_count
+from public.ai_generation_targets target
+where target.lahan_id = '20000000-0000-0000-0000-000000000001'
+  and target.scheduled_for =
+    (pg_catalog.now() at time zone 'Asia/Jakarta')::date
+  and target.is_current
+  and target.status = 'succeeded';
+
+select is(
+  (select count(*) from task8_cron_guard_baseline),
+  1::bigint,
+  'cron race fixture starts with one succeeded current target'
+);
+
+insert into public.ai_generation_runs (
+  id,
+  trigger,
+  scheduled_for,
+  requested_by,
+  status,
+  model,
+  plot_count
+) values
+  (
+    '41000000-0000-0000-0000-000000000001',
+    'cron',
+    (pg_catalog.now() at time zone 'Asia/Jakarta')::date,
+    null,
+    'running',
+    'test/model',
+    1
+  ),
+  (
+    '41000000-0000-0000-0000-000000000002',
+    'cron',
+    (pg_catalog.now() at time zone 'Asia/Jakarta')::date,
+    null,
+    'running',
+    'test/model',
+    1
+  );
+
+create temporary table task8_cron_replace_result (
+  target_id uuid not null
+) on commit drop;
+
+set local role service_role;
+
+insert into task8_cron_replace_result (target_id)
+select public.replace_ai_task_drafts(
+  '41000000-0000-0000-0000-000000000001',
+  '20000000-0000-0000-0000-000000000001',
+  (pg_catalog.now() at time zone 'Asia/Jakarta')::date,
+  '30000000-0000-0000-0000-000000000001',
+  'test/model',
+  'Cron kedua tidak boleh mengganti target yang sudah sukses.',
+  '[
+    {
+      "judul":"Draft dari cron terlambat",
+      "deskripsi":"Draft ini tidak boleh tersimpan karena cron pertama sudah sukses.",
+      "priority":"medium",
+      "requires_location":true,
+      "ai_reason":"Menguji guard atomik cron pada jalur sukses."
+    }
+  ]'::jsonb
+);
+
+reset role;
+
+select is(
+  (select target_id from task8_cron_replace_result),
+  (select id from task8_cron_guard_baseline),
+  'later cron replacement returns the first succeeded target'
+);
+select is(
+  (
+    select count(*)
+    from public.ai_generation_targets
+    where run_id = '41000000-0000-0000-0000-000000000001'
+  ),
+  0::bigint,
+  'later cron replacement inserts no target row'
+);
+select is(
+  (
+    select id
+    from public.ai_generation_targets
+    where lahan_id = '20000000-0000-0000-0000-000000000001'
+      and scheduled_for =
+        (pg_catalog.now() at time zone 'Asia/Jakarta')::date
+      and is_current
+  ),
+  (select id from task8_cron_guard_baseline),
+  'later cron replacement preserves the succeeded current target'
+);
+select is(
+  (
+    select max(version)
+    from public.ai_generation_targets
+    where lahan_id = '20000000-0000-0000-0000-000000000001'
+      and scheduled_for =
+        (pg_catalog.now() at time zone 'Asia/Jakarta')::date
+  ),
+  (select version from task8_cron_guard_baseline),
+  'later cron replacement preserves the target version'
+);
+select is(
+  (
+    select count(*)
+    from public.ai_task_drafts draft
+    where draft.generation_target_id =
+      (select id from task8_cron_guard_baseline)
+      and draft.status = 'pending'
+  ),
+  (select pending_draft_count from task8_cron_guard_baseline),
+  'later cron replacement preserves pending drafts'
+);
+
+create temporary table task8_cron_record_result (
+  target_id uuid not null
+) on commit drop;
+
+set local role service_role;
+
+insert into task8_cron_record_result (target_id)
+select public.record_ai_generation_target(
+  '41000000-0000-0000-0000-000000000002',
+  '20000000-0000-0000-0000-000000000001',
+  (pg_catalog.now() at time zone 'Asia/Jakarta')::date,
+  'failed',
+  'weather_unavailable',
+  null,
+  null
+);
+
+reset role;
+
+select is(
+  (select target_id from task8_cron_record_result),
+  (select id from task8_cron_guard_baseline),
+  'later cron failure returns the first succeeded target'
+);
+select is(
+  (
+    select count(*)
+    from public.ai_generation_targets
+    where run_id = '41000000-0000-0000-0000-000000000002'
+  ),
+  0::bigint,
+  'later cron failure inserts no target row'
+);
+select is(
+  (
+    select pg_catalog.jsonb_build_object(
+      'current_id',
+      target.id,
+      'version',
+      target.version,
+      'draft_count',
+      (
+        select count(*)
+        from public.ai_task_drafts draft
+        where draft.generation_target_id = target.id
+      ),
+      'pending_draft_count',
+      (
+        select count(*)
+        from public.ai_task_drafts draft
+        where draft.generation_target_id = target.id
+          and draft.status = 'pending'
+      )
+    )
+    from public.ai_generation_targets target
+    where target.lahan_id = '20000000-0000-0000-0000-000000000001'
+      and target.scheduled_for =
+        (pg_catalog.now() at time zone 'Asia/Jakarta')::date
+      and target.is_current
+  ),
+  (
+    select pg_catalog.jsonb_build_object(
+      'current_id',
+      id,
+      'version',
+      version,
+      'draft_count',
+      draft_count,
+      'pending_draft_count',
+      pending_draft_count
+    )
+    from task8_cron_guard_baseline
+  ),
+  'later cron failure preserves current target, version, and drafts'
+);
 
 select * from finish();
 rollback;

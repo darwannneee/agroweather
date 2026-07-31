@@ -61,6 +61,11 @@ export type GeneratedTaskResult = {
   usage: Record<string, unknown> | null;
 };
 
+export type GenerationPersistenceResult = {
+  targetId: string;
+  skipped: boolean;
+};
+
 export type GenerationWarning = {
   plotId: string;
   code: GenerationWarningCode;
@@ -95,7 +100,7 @@ export type GenerationDependencies = {
     weatherSnapshotId: string;
     summary: string;
     tasks: GeneratedDraft[];
-  }): Promise<string>;
+  }): Promise<GenerationPersistenceResult>;
   recordTargetResult(input: {
     runId: string;
     plotId: string;
@@ -104,7 +109,7 @@ export type GenerationDependencies = {
     errorCode: GenerationWarningCode;
     summary: string | null;
     weatherSnapshotId: string | null;
-  }): Promise<string | void>;
+  }): Promise<GenerationPersistenceResult>;
   finishRun(input: {
     runId: string;
     status: GenerationRunStatus;
@@ -174,7 +179,7 @@ async function recordFailure(
   },
 ): Promise<PlotOutcome> {
   try {
-    await dependencies.recordTargetResult({
+    const persisted = await dependencies.recordTargetResult({
       runId: input.runId,
       plotId: input.plotId,
       scheduledFor: input.scheduledFor,
@@ -183,6 +188,9 @@ async function recordFailure(
       summary: null,
       weatherSnapshotId: input.weatherSnapshotId ?? null,
     });
+    if (persisted.skipped) {
+      return { kind: 'skipped' };
+    }
     return {
       kind: input.status === 'skipped' ? 'skipped' : 'failed',
       warning: warning(input.plotId, input.code),
@@ -314,7 +322,7 @@ async function processPlot(
   }
 
   try {
-    await dependencies.replaceDrafts({
+    const persisted = await dependencies.replaceDrafts({
       runId,
       plotId: plot.id,
       scheduledFor: request.scheduledFor,
@@ -322,6 +330,9 @@ async function processPlot(
       summary: generated.summary,
       tasks: generated.tasks,
     });
+    if (persisted.skipped) {
+      return { kind: 'skipped' };
+    }
   } catch {
     return recordFailure(dependencies, {
       runId,

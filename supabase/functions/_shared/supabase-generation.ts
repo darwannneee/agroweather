@@ -4,6 +4,7 @@ import {
   type CachedGenerationWeather,
   type CurrentGenerationTarget,
   type GenerationDependencies,
+  type GenerationPersistenceResult,
   type GenerationPlot,
   type GenerationRequest,
   type RecentGenerationTask,
@@ -140,6 +141,27 @@ export function createSupabaseGenerationDependencies(input: {
     openRouterApiKey,
     openRouterModel,
   } = input;
+
+  const persistenceResult = async (
+    targetId: unknown,
+    requestRunId: string,
+  ): Promise<GenerationPersistenceResult> => {
+    if (typeof targetId !== 'string' || targetId.length === 0) {
+      throw new Error('DATABASE_INVALID_RESULT');
+    }
+    const row = unwrap(await admin
+      .from('ai_generation_targets')
+      .select('run_id')
+      .eq('id', targetId)
+      .single()) as { run_id?: unknown };
+    if (typeof row.run_id !== 'string' || row.run_id.length === 0) {
+      throw new Error('DATABASE_INVALID_RESULT');
+    }
+    return {
+      targetId,
+      skipped: row.run_id !== requestRunId,
+    };
+  };
 
   return {
     async listPlots(plotIds) {
@@ -307,7 +329,7 @@ export function createSupabaseGenerationDependencies(input: {
     },
 
     async replaceDrafts(request) {
-      return unwrap(await admin.rpc('replace_ai_task_drafts', {
+      const targetId = unwrap(await admin.rpc('replace_ai_task_drafts', {
         p_run_id: request.runId,
         p_lahan_id: request.plotId,
         p_scheduled_for: request.scheduledFor,
@@ -315,11 +337,12 @@ export function createSupabaseGenerationDependencies(input: {
         p_model: openRouterModel,
         p_result_summary: request.summary,
         p_drafts: request.tasks,
-      })) as string;
+      }));
+      return persistenceResult(targetId, request.runId);
     },
 
     async recordTargetResult(request) {
-      return unwrap(await admin.rpc('record_ai_generation_target', {
+      const targetId = unwrap(await admin.rpc('record_ai_generation_target', {
         p_run_id: request.runId,
         p_lahan_id: request.plotId,
         p_scheduled_for: request.scheduledFor,
@@ -327,7 +350,8 @@ export function createSupabaseGenerationDependencies(input: {
         p_error_code: request.errorCode,
         p_result_summary: request.summary,
         p_weather_snapshot_id: request.weatherSnapshotId,
-      })) as string;
+      }));
+      return persistenceResult(targetId, request.runId);
     },
 
     async finishRun(result) {
@@ -343,6 +367,10 @@ export function createSupabaseGenerationDependencies(input: {
           completed_at: new Date().toISOString(),
         })
         .eq('id', result.runId));
+    },
+
+    now() {
+      return new Date();
     },
   };
 }

@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import {
   generateDailyTasks,
   type GenerationDependencies,
@@ -62,13 +65,28 @@ function dependencies(
       usage: null,
     }),
     createRun: jest.fn().mockResolvedValue('run-1'),
-    replaceDrafts: jest.fn().mockResolvedValue('target-1'),
-    recordTargetResult: jest.fn().mockResolvedValue('target-result-1'),
+    replaceDrafts: jest.fn().mockResolvedValue({
+      targetId: 'target-1',
+      skipped: false,
+    }),
+    recordTargetResult: jest.fn().mockResolvedValue({
+      targetId: 'target-result-1',
+      skipped: false,
+    }),
     finishRun: jest.fn().mockResolvedValue(undefined),
     now: () => now,
     ...overrides,
   } as jest.Mocked<GenerationDependencies>;
 }
+
+test('Supabase dependencies provide the generator clock contract', () => {
+  const source = readFileSync(
+    resolve(__dirname, '../supabase-generation.ts'),
+    'utf8',
+  );
+
+  expect(source).toMatch(/now\s*\(\s*\)\s*\{\s*return new Date\(\);?\s*\}/);
+});
 
 test('unassigned active plot is skipped without provider calls', async () => {
   const deps = dependencies({
@@ -347,6 +365,68 @@ test('cron lookup failure does not mutate an unknown current target', async () =
   expect(deps.replaceDrafts).not.toHaveBeenCalled();
   expect(JSON.stringify(result)).not.toContain('raw-db-message');
   expect(deps.finishRun).toHaveBeenCalledTimes(1);
+});
+
+test('atomic cron replacement no-op is counted as a clean skip', async () => {
+  const deps = dependencies({
+    generateDrafts: jest.fn().mockResolvedValue({
+      summary: 'Race dengan cron yang lebih dulu selesai.',
+      tasks: generatedTasks,
+      usage: { total_tokens: 90 },
+    }),
+    replaceDrafts: jest.fn().mockResolvedValue({
+      targetId: 'target-from-first-cron',
+      skipped: true,
+    }),
+  });
+
+  const result = await generateDailyTasks({
+    trigger: 'cron',
+    scheduledFor: '2026-07-30',
+    requestedBy: null,
+  }, deps);
+
+  expect(result).toMatchObject({
+    status: 'succeeded',
+    successCount: 0,
+    skippedCount: 1,
+    failedCount: 0,
+    warnings: [],
+  });
+  expect(deps.finishRun).toHaveBeenCalledWith(expect.objectContaining({
+    providerUsage: [],
+  }));
+  expect(deps.recordTargetResult).not.toHaveBeenCalled();
+});
+
+test('atomic cron failure no-op preserves success as a clean skip', async () => {
+  const deps = dependencies({
+    fetchWeather: jest.fn().mockRejectedValue(new Error('weather-down')),
+    findWeatherCache: jest.fn().mockResolvedValue(null),
+    recordTargetResult: jest.fn().mockResolvedValue({
+      targetId: 'target-from-first-cron',
+      skipped: true,
+    }),
+  });
+
+  const result = await generateDailyTasks({
+    trigger: 'cron',
+    scheduledFor: '2026-07-30',
+    requestedBy: null,
+  }, deps);
+
+  expect(result).toMatchObject({
+    status: 'succeeded',
+    successCount: 0,
+    skippedCount: 1,
+    failedCount: 0,
+    warnings: [],
+  });
+  expect(deps.replaceDrafts).not.toHaveBeenCalled();
+  expect(deps.finishRun).toHaveBeenCalledWith(expect.objectContaining({
+    providerUsage: [],
+    warnings: [],
+  }));
 });
 
 test('manual generation replaces drafts even when a current target exists', async () => {
