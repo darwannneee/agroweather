@@ -34,6 +34,13 @@ const priorityLabels: Record<TaskPriority, string> = {
   high: 'tinggi',
 };
 
+type ReviewActionContext = {
+  taskId: string;
+  evidenceId: string;
+  attemptNumber: number;
+  lifecycleVersion: number;
+};
+
 function formatWib(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return 'Tidak tersedia';
@@ -128,6 +135,11 @@ export function TaskReviewScreen() {
   const [actionError, setActionError] = useState<string | null>(null);
   const requestVersion = useRef(0);
   const actionActive = useRef(false);
+  const actionLifecycleVersion = useRef(0);
+  const mounted = useRef(true);
+  const taskIdRef = useRef(taskId);
+  const reviewableEvidenceIdRef = useRef<string | null>(null);
+  taskIdRef.current = taskId;
 
   const loadReview = useCallback(
     async (showLoading = true): Promise<boolean> => {
@@ -175,25 +187,68 @@ export function TaskReviewScreen() {
   );
 
   useEffect(() => {
+    const lifecycleVersion = ++actionLifecycleVersion.current;
+    actionActive.current = false;
+    setActionPending(null);
     setActionFeedback(null);
     setActionError(null);
     void loadReview();
     return () => {
       requestVersion.current += 1;
+      if (actionLifecycleVersion.current === lifecycleVersion) {
+        actionLifecycleVersion.current += 1;
+      }
     };
   }, [loadReview]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      actionLifecycleVersion.current += 1;
+      actionActive.current = false;
+      requestVersion.current += 1;
+    };
+  }, []);
 
   const latestAttempt = attempts.at(-1) ?? null;
   const reviewableAttempt =
     task?.status !== 'selesai' && latestAttempt?.status === 'pending'
       ? latestAttempt
       : null;
+  reviewableEvidenceIdRef.current = reviewableAttempt?.id ?? null;
   const actionsBlocked = actionPending !== null;
 
+  function reviewActionContext(): ReviewActionContext | null {
+    if (!taskId || !reviewableAttempt) return null;
+    return {
+      taskId,
+      evidenceId: reviewableAttempt.id,
+      attemptNumber: reviewableAttempt.attemptNumber,
+      lifecycleVersion: actionLifecycleVersion.current,
+    };
+  }
+
+  function isCurrentRouteContext(context: ReviewActionContext): boolean {
+    return (
+      mounted.current &&
+      taskIdRef.current === context.taskId &&
+      actionLifecycleVersion.current === context.lifecycleVersion
+    );
+  }
+
+  function isCurrentReviewContext(context: ReviewActionContext): boolean {
+    return (
+      isCurrentRouteContext(context) &&
+      reviewableEvidenceIdRef.current === context.evidenceId
+    );
+  }
+
   async function performReview(
-    decision: 'accepted' | 'revision_requested'
+    decision: 'accepted' | 'revision_requested',
+    context: ReviewActionContext
   ) {
-    if (!reviewableAttempt || actionActive.current) return;
+    if (!isCurrentReviewContext(context) || actionActive.current) return;
 
     const normalizedNote = reviewNote.trim();
     if (decision === 'revision_requested' && !normalizedNote) {
@@ -208,12 +263,13 @@ export function TaskReviewScreen() {
     setReviewNoteError(null);
     try {
       await reviewTaskEvidence(
-        reviewableAttempt.id,
+        context.evidenceId,
         decision,
         decision === 'accepted' ? null : normalizedNote
       );
+      if (!isCurrentRouteContext(context)) return;
       const refreshed = await loadReview(false);
-      if (refreshed) {
+      if (refreshed && isCurrentRouteContext(context)) {
         setReviewNote('');
         setActionFeedback(
           decision === 'accepted'
@@ -222,26 +278,31 @@ export function TaskReviewScreen() {
         );
       }
     } catch {
-      setActionError(
-        'Keputusan bukti belum dapat disimpan. Silakan coba lagi.'
-      );
+      if (isCurrentRouteContext(context)) {
+        setActionError(
+          'Keputusan bukti belum dapat disimpan. Silakan coba lagi.'
+        );
+      }
     } finally {
-      actionActive.current = false;
-      setActionPending(null);
+      if (isCurrentRouteContext(context)) {
+        actionActive.current = false;
+        setActionPending(null);
+      }
     }
   }
 
   function confirmAcceptance() {
-    if (!reviewableAttempt || actionActive.current) return;
+    const context = reviewActionContext();
+    if (!context || actionActive.current) return;
     Alert.alert(
       'Terima bukti?',
-      `Percobaan ${reviewableAttempt.attemptNumber} akan diterima dan task ditandai selesai.`,
+      `Percobaan ${context.attemptNumber} akan diterima dan task ditandai selesai.`,
       [
         { text: 'Batal', style: 'cancel' },
         {
           text: 'Terima',
           onPress: () => {
-            void performReview('accepted');
+            void performReview('accepted', context);
           },
         },
       ]
@@ -358,7 +419,12 @@ export function TaskReviewScreen() {
                 variant="danger"
                 loading={actionPending === 'revision_requested'}
                 disabled={actionsBlocked}
-                onPress={() => void performReview('revision_requested')}
+                onPress={() => {
+                  const context = reviewActionContext();
+                  if (context) {
+                    void performReview('revision_requested', context);
+                  }
+                }}
               />
             </View>
             <View style={styles.action}>

@@ -153,6 +153,29 @@ const attempts: EvidenceAttempt[] = [
   }),
 ];
 
+const secondTask: FarmTask = {
+  ...task,
+  id: 'task-2',
+  lahanId: 'plot-2',
+  judul: 'Periksa pompa selatan',
+};
+
+const secondPlot: FarmPlot = {
+  ...plot,
+  id: 'plot-2',
+  namaLahan: 'Sawah Selatan',
+};
+
+const secondAttempts: EvidenceAttempt[] = [
+  makeAttempt({
+    id: 'evidence-task-2',
+    attemptNumber: 1,
+    taskId: 'task-2',
+    status: 'pending',
+    reviewNote: null,
+  }),
+];
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -390,6 +413,91 @@ describe('TaskReviewScreen', () => {
       pending.resolve();
       await pending.promise;
     });
+  });
+
+  test('ignores a stale Alert confirmation after the route changes', async () => {
+    taskMocks.fetchTaskDetail.mockImplementation((id: string) =>
+      Promise.resolve(id === 'task-2' ? secondTask : task)
+    );
+    plotMocks.fetchPlotById.mockImplementation((id: string) =>
+      Promise.resolve(id === 'plot-2' ? secondPlot : plot)
+    );
+    evidenceMocks.fetchTaskEvidenceAttempts.mockImplementation((id: string) =>
+      Promise.resolve(id === 'task-2' ? secondAttempts : attempts)
+    );
+    const rendered = render(<TaskReviewScreen />);
+    await screen.findByText(task.judul);
+    fireEvent.press(screen.getByRole('button', { name: 'Terima Bukti' }));
+    const staleConfirm = alertSpy.mock.calls
+      .at(-1)?.[2]
+      ?.find((item) => item.text === 'Terima');
+
+    await act(async () => {
+      routerMocks.__setParams({ id: 'task-2' });
+      rendered.rerender(<TaskReviewScreen />);
+    });
+    await screen.findByText(secondTask.judul);
+    act(() => {
+      staleConfirm?.onPress?.();
+    });
+
+    expect(evidenceMocks.reviewTaskEvidence).not.toHaveBeenCalled();
+    expect(screen.getByText(secondTask.judul)).toBeOnTheScreen();
+  });
+
+  test('does not let an in-flight review reload overwrite a new route', async () => {
+    const pending = deferred<void>();
+    evidenceMocks.reviewTaskEvidence.mockReturnValue(pending.promise);
+    taskMocks.fetchTaskDetail.mockImplementation((id: string) =>
+      Promise.resolve(id === 'task-2' ? secondTask : task)
+    );
+    plotMocks.fetchPlotById.mockImplementation((id: string) =>
+      Promise.resolve(id === 'plot-2' ? secondPlot : plot)
+    );
+    evidenceMocks.fetchTaskEvidenceAttempts.mockImplementation((id: string) =>
+      Promise.resolve(id === 'task-2' ? secondAttempts : attempts)
+    );
+    const rendered = render(<TaskReviewScreen />);
+    await screen.findByText(task.judul);
+    fireEvent.press(screen.getByRole('button', { name: 'Terima Bukti' }));
+    confirmLatestAlert('Terima');
+    await waitFor(() => {
+      expect(evidenceMocks.reviewTaskEvidence).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      routerMocks.__setParams({ id: 'task-2' });
+      rendered.rerender(<TaskReviewScreen />);
+    });
+    await screen.findByText(secondTask.judul);
+    await act(async () => {
+      pending.resolve();
+      await pending.promise;
+    });
+
+    expect(screen.getByText(secondTask.judul)).toBeOnTheScreen();
+    expect(screen.queryByText(task.judul)).toBeNull();
+    expect(taskMocks.fetchTaskDetail).toHaveBeenLastCalledWith('task-2');
+  });
+
+  test('does not refresh or update state after unmount during review', async () => {
+    const pending = deferred<void>();
+    evidenceMocks.reviewTaskEvidence.mockReturnValue(pending.promise);
+    const rendered = render(<TaskReviewScreen />);
+    await screen.findByText(task.judul);
+    fireEvent.press(screen.getByRole('button', { name: 'Terima Bukti' }));
+    confirmLatestAlert('Terima');
+    await waitFor(() => {
+      expect(evidenceMocks.reviewTaskEvidence).toHaveBeenCalledTimes(1);
+    });
+
+    rendered.unmount();
+    await act(async () => {
+      pending.resolve();
+      await pending.promise;
+    });
+
+    expect(taskMocks.fetchTaskDetail).toHaveBeenCalledTimes(1);
   });
 
   test('sanitizes load and review errors', async () => {
