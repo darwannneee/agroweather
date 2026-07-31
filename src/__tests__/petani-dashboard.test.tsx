@@ -327,7 +327,7 @@ describe('PetaniDashboard', () => {
         name: 'Periksa Lagi',
       });
       const readyTask = screen.getByRole('button', {
-        name: 'Buka tugas Periksa irigasi',
+        name: /^Buka tugas Periksa irigasi,/,
       });
       expect(within(readyTask).getByText('Siap')).toBeOnTheScreen();
 
@@ -335,7 +335,7 @@ describe('PetaniDashboard', () => {
 
       await waitFor(() => {
         const resetTask = screen.getByRole('button', {
-          name: 'Buka tugas Periksa irigasi',
+          name: /^Buka tugas Periksa irigasi,/,
         });
         expect(
           within(resetTask).getByText('Perlu cek lokasi')
@@ -377,7 +377,7 @@ describe('PetaniDashboard', () => {
     expect(await screen.findByText('Kehadiran terkonfirmasi')).toBeOnTheScreen();
 
     const smallTask = screen.getByRole('button', {
-      name: 'Buka tugas Rawat petak kecil',
+      name: /^Buka tugas Rawat petak kecil,/,
     });
     expect(within(smallTask).getByText('Perlu cek lokasi')).toBeOnTheScreen();
     expect(within(smallTask).queryByText('Siap')).toBeNull();
@@ -615,7 +615,7 @@ describe('PetaniDashboard', () => {
     expect(screen.getAllByText('Selesai').length).toBeGreaterThanOrEqual(2);
 
     const nearTask = screen.getByRole('button', {
-      name: 'Buka tugas Periksa irigasi',
+      name: /^Buka tugas Periksa irigasi,/,
     });
     expect(within(nearTask).getByText('Perlu cek lokasi')).toBeOnTheScreen();
 
@@ -623,12 +623,12 @@ describe('PetaniDashboard', () => {
 
     await waitFor(() => {
       const updatedNearTask = screen.getByRole('button', {
-        name: 'Buka tugas Periksa irigasi',
+        name: /^Buka tugas Periksa irigasi,/,
       });
       expect(within(updatedNearTask).getByText('Siap')).toBeOnTheScreen();
     });
     const farTask = screen.getByRole('button', {
-      name: 'Buka tugas Cek pupuk',
+      name: /^Buka tugas Cek pupuk,/,
     });
     expect(within(farTask).getByText('Di luar radius')).toBeOnTheScreen();
     expect(within(farTask).getByText('Radius lahan: 200 meter')).toBeOnTheScreen();

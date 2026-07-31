@@ -158,19 +158,24 @@ export function DailyOperationsScreen() {
           <View style={styles.section}>
             <AppText variant="title">Kehadiran Hari Ini</AppText>
             {operations?.attendance.length ? (
-              operations.attendance.map((item) => (
-                <AttendanceRow
-                  key={item.farmerId}
-                  farmerName={item.farmerName}
-                  status={item.status}
-                  record={item.record}
-                  onPress={
-                    item.status === 'present' && item.record
-                      ? () => setSelectedAttendance(item.record)
-                      : undefined
-                  }
-                />
-              ))
+              operations.attendance.map((item) =>
+                item.status === 'present' && item.record ? (
+                  <AttendanceRow
+                    key={item.farmerId}
+                    farmerName={item.farmerName}
+                    status="present"
+                    record={item.record}
+                    onPress={() => setSelectedAttendance(item.record)}
+                  />
+                ) : (
+                  <AttendanceRow
+                    key={item.farmerId}
+                    farmerName={item.farmerName}
+                    status="absent"
+                    record={null}
+                  />
+                )
+              )
             ) : (
               <FeedbackState
                 title="Belum ada data absensi"

@@ -6,12 +6,26 @@ import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import type { AttendanceRecord } from '@/lib/farm-types';
 
-type AttendanceRowProps = {
+type AttendanceRowProps =
+  | {
+      farmerName: string;
+      status: 'present';
+      record: AttendanceRecord;
+      onPress: () => void;
+    }
+  | {
+      farmerName: string;
+      status: 'absent';
+      record: null;
+      onPress?: never;
+    };
+
+type AttendanceContentProps = {
   farmerName: string;
-  status: 'present' | 'absent';
-  record: AttendanceRecord | null;
-  onPress?: () => void;
-};
+} & (
+  | { status: 'present'; record: AttendanceRecord }
+  | { status: 'absent'; record: null }
+);
 
 function jakartaTime(value: string): string {
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -30,8 +44,8 @@ function AttendanceContent({
   farmerName,
   status,
   record,
-}: Omit<AttendanceRowProps, 'onPress'>) {
-  const present = status === 'present' && record !== null;
+}: AttendanceContentProps) {
+  const present = status === 'present';
 
   return (
     <SurfaceCard>
@@ -59,7 +73,7 @@ export function AttendanceRow({
   record,
   onPress,
 }: AttendanceRowProps) {
-  if (status === 'present' && record && onPress) {
+  if (status === 'present') {
     const time = jakartaTime(record.checkedInAt);
     return (
       <Pressable
@@ -82,9 +96,7 @@ export function AttendanceRow({
 
   return (
     <View
-      accessibilityLabel={`Kehadiran ${farmerName}, ${
-        status === 'present' ? 'sudah absen' : 'belum absen'
-      }`}
+      accessibilityLabel={`Kehadiran ${farmerName}, belum absen`}
     >
       <AttendanceContent
         farmerName={farmerName}

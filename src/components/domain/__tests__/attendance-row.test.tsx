@@ -47,7 +47,6 @@ describe('AttendanceRow', () => {
         farmerName="Sari"
         status="absent"
         record={null}
-        onPress={jest.fn()}
       />
     );
 

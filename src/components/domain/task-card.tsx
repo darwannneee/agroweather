@@ -42,11 +42,18 @@ const priorityLabel = {
 export function TaskCard({ task, plotName, state, radiusM, onPress }: TaskCardProps) {
   const status = taskState[state];
   const showRadius = (state === 'outside' || state === 'check-location') && radiusM !== undefined;
+  const accessibilityLabel = [
+    `Buka tugas ${task.judul}`,
+    `lahan ${plotName}`,
+    `status ${status.label}`,
+    `prioritas ${priorityLabel[task.priority]}`,
+    `tanggal ${task.scheduledFor}`,
+  ].join(', ');
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Buka tugas ${task.judul}`}
+      accessibilityLabel={accessibilityLabel}
       onPress={onPress}
       style={({ pressed }) => [styles.pressTarget, pressed && styles.pressed]}
     >

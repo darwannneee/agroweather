@@ -39,10 +39,12 @@ describe('TaskCard', () => {
     expect(screen.getByText('Radius lahan: 750 meter')).toBeOnTheScreen();
     expect(screen.getByText('Deadline: 2026-08-02')).toBeOnTheScreen();
 
-    fireEvent.press(screen.getByRole('button', { name: 'Buka tugas Bersihkan saluran' }));
+    const actionName =
+      'Buka tugas Bersihkan saluran, lahan Sawah A, status Perlu cek lokasi, prioritas Sedang, tanggal 2026-07-30';
+    fireEvent.press(screen.getByRole('button', { name: actionName }));
     expect(onPress).toHaveBeenCalledTimes(1);
     expect(
-      screen.getByRole('button', { name: 'Buka tugas Bersihkan saluran' })
+      screen.getByRole('button', { name: actionName })
     ).toHaveStyle({ minHeight: 44 });
   });
 
@@ -91,4 +93,27 @@ describe('TaskCard', () => {
     expect(screen.queryByText('Prioritas: Sedang')).toBeNull();
     expect(screen.queryByText('Tanggal tugas: 2026-07-30')).toBeNull();
   });
+
+  test.each([
+    ['pending-review', 'Menunggu review'],
+    ['revision-needed', 'Perlu perbaikan'],
+  ] satisfies [TaskCardState, string][])(
+    'includes the %s operational state in the accessible action',
+    (state, label) => {
+      render(
+        <TaskCard
+          task={task}
+          plotName="Sawah A"
+          state={state}
+          onPress={() => undefined}
+        />
+      );
+
+      expect(
+        screen.getByRole('button', {
+          name: `Buka tugas Bersihkan saluran, lahan Sawah A, status ${label}, prioritas Sedang, tanggal 2026-07-30`,
+        })
+      ).toBeOnTheScreen();
+    }
+  );
 });

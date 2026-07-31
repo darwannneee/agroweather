@@ -225,7 +225,7 @@ describe('DailyOperationsScreen', () => {
 
     fireEvent.press(
       screen.getByRole('button', {
-        name: 'Buka tugas Task menunggu review',
+        name: /^Buka tugas Task menunggu review,/,
       })
     );
     expect(routerMocks.__push).toHaveBeenCalledWith(
