@@ -1,0 +1,708 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react-native';
+import { Alert } from 'react-native';
+
+import { TaskDetailScreen } from '@/app/(app)/task/[id]';
+import type {
+  EvidenceAttempt,
+  FarmPlot,
+  FarmTask,
+} from '@/lib/farm-types';
+import type { CurrentLocationResult } from '@/services/location';
+
+jest.mock('expo-router', () => {
+  const back = jest.fn();
+  const replace = jest.fn();
+  let params: { id?: string | string[] } = { id: 'task-1' };
+
+  return {
+    useLocalSearchParams: () => params,
+    useRouter: () => ({ back, replace }),
+    __back: back,
+    __replace: replace,
+    __setParams: (next: typeof params) => {
+      params = next;
+    },
+  };
+});
+
+jest.mock('@/components/domain/role-guard', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    RoleGuard: ({ children }: { children: React.ReactNode }) =>
+      React.createElement(React.Fragment, null, children),
+  };
+});
+
+jest.mock('expo-image-picker', () => ({
+  requestMediaLibraryPermissionsAsync: jest.fn(),
+  launchImageLibraryAsync: jest.fn(),
+  requestCameraPermissionsAsync: jest.fn(),
+  launchCameraAsync: jest.fn(),
+}));
+
+jest.mock('@/services/auth-context', () => ({
+  useAuth: () => ({ profile: { id: 'farmer-1' } }),
+}));
+
+jest.mock('@/services/evidence', () => ({
+  fetchTaskEvidenceAttempts: jest.fn(),
+  uploadTaskEvidence: jest.fn(),
+}));
+
+jest.mock('@/services/location', () => ({
+  requestCurrentLocation: jest.fn(),
+  openLocationSettings: jest.fn(),
+}));
+
+jest.mock('@/services/plots', () => ({
+  fetchPlotById: jest.fn(),
+}));
+
+jest.mock('@/services/tasks', () => ({
+  fetchTaskDetail: jest.fn(),
+  startTask: jest.fn(),
+}));
+
+const routerMocks = jest.requireMock('expo-router') as {
+  __setParams: (params: { id?: string | string[] }) => void;
+};
+const imagePickerMocks = jest.requireMock('expo-image-picker') as {
+  requestMediaLibraryPermissionsAsync: jest.Mock;
+  launchImageLibraryAsync: jest.Mock;
+  requestCameraPermissionsAsync: jest.Mock;
+  launchCameraAsync: jest.Mock;
+};
+const evidenceMocks = jest.requireMock('@/services/evidence') as {
+  fetchTaskEvidenceAttempts: jest.Mock;
+  uploadTaskEvidence: jest.Mock;
+};
+const locationMocks = jest.requireMock('@/services/location') as {
+  requestCurrentLocation: jest.Mock;
+  openLocationSettings: jest.Mock;
+};
+const plotMocks = jest.requireMock('@/services/plots') as {
+  fetchPlotById: jest.Mock;
+};
+const taskMocks = jest.requireMock('@/services/tasks') as {
+  fetchTaskDetail: jest.Mock;
+  startTask: jest.Mock;
+};
+const alertSpy = jest.spyOn(Alert, 'alert');
+
+const task: FarmTask = {
+  id: 'task-1',
+  lahanId: 'plot-1',
+  assignedTo: 'farmer-1',
+  assignedBy: 'staff-1',
+  judul: 'Bersihkan saluran',
+  deskripsi: 'Bersihkan saluran air di sisi utara.',
+  status: 'belum_dikerjakan',
+  deadline: null,
+  scheduledFor: '2026-07-30',
+  priority: 'medium',
+  source: 'manual',
+  aiReason: 'Hujan tinggi membuat saluran perlu segera diperiksa.',
+  requiresLocation: true,
+  unlockedAt: null,
+  latestEvidence: null,
+};
+
+const plot: FarmPlot = {
+  id: 'plot-1',
+  namaLahan: 'Sawah Utara',
+  farmerId: 'farmer-1',
+  farmerName: 'Sari',
+  luasHektar: 2,
+  jenisTanaman: 'Padi',
+  faseLahan: 'Vegetatif',
+  latCenter: -7.25,
+  lngCenter: 112.76,
+  radiusGeofenceM: 1_000,
+  status: 'aktif',
+};
+
+function evidenceAttempt(
+  overrides: Partial<EvidenceAttempt> = {}
+): EvidenceAttempt {
+  return {
+    id: 'evidence-1',
+    taskId: task.id,
+    attemptNumber: 1,
+    photoPath: 'farmer-1/task-1/evidence.jpg',
+    photoUrl: 'https://signed.example/evidence-1',
+    note: 'Saluran sudah dibersihkan.',
+    latitude: -7.25,
+    longitude: 112.76,
+    status: 'pending',
+    reviewNote: null,
+    reviewedAt: null,
+    createdAt: '2026-07-30T01:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function granted(
+  coords = { latitude: plot.latCenter, longitude: plot.lngCenter }
+): CurrentLocationResult {
+  return {
+    status: 'granted',
+    coords,
+    accuracyM: 10,
+    timestamp: Date.now(),
+    message: null,
+    canOpenSettings: false,
+  };
+}
+
+function lowAccuracy(): CurrentLocationResult {
+  return {
+    status: 'low-accuracy',
+    coords: { latitude: plot.latCenter, longitude: plot.lngCenter },
+    accuracyM: 250,
+    timestamp: Date.now(),
+    message: 'Akurasi GPS belum cukup baik. Pindah ke area terbuka lalu periksa lagi.',
+    canOpenSettings: false,
+  };
+}
+
+async function chooseEvidence() {
+  fireEvent.press(screen.getByText('Pilih Foto Bukti'));
+  await waitFor(() => {
+    expect(imagePickerMocks.launchImageLibraryAsync).toHaveBeenCalledTimes(1);
+  });
+}
+
+async function unlockTask() {
+  fireEvent.press(await screen.findByRole('button', { name: 'Periksa Lokasi Task' }));
+  await screen.findByText('Task siap dikerjakan');
+}
+
+describe('TaskDetailScreen', () => {
+  beforeEach(() => {
+    alertSpy.mockClear();
+    routerMocks.__setParams({ id: 'task-1' });
+    imagePickerMocks.requestMediaLibraryPermissionsAsync.mockReset();
+    imagePickerMocks.requestMediaLibraryPermissionsAsync.mockResolvedValue({ granted: true });
+    imagePickerMocks.launchImageLibraryAsync.mockReset();
+    imagePickerMocks.launchImageLibraryAsync.mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file://evidence.jpg', mimeType: 'image/jpeg' }],
+    });
+    imagePickerMocks.requestCameraPermissionsAsync.mockReset();
+    imagePickerMocks.launchCameraAsync.mockReset();
+    evidenceMocks.fetchTaskEvidenceAttempts.mockReset();
+    evidenceMocks.fetchTaskEvidenceAttempts.mockResolvedValue([]);
+    evidenceMocks.uploadTaskEvidence.mockReset();
+    evidenceMocks.uploadTaskEvidence.mockResolvedValue(evidenceAttempt());
+    locationMocks.requestCurrentLocation.mockReset();
+    locationMocks.openLocationSettings.mockReset();
+    taskMocks.fetchTaskDetail.mockReset();
+    taskMocks.fetchTaskDetail.mockResolvedValue(task);
+    taskMocks.startTask.mockReset();
+    taskMocks.startTask.mockResolvedValue(undefined);
+    plotMocks.fetchPlotById.mockReset();
+    plotMocks.fetchPlotById.mockResolvedValue(plot);
+  });
+
+  test('does not request GPS while loading task detail', async () => {
+    render(<TaskDetailScreen />);
+
+    await screen.findByRole('button', { name: 'Periksa Lokasi Task' });
+
+    expect(locationMocks.requestCurrentLocation).not.toHaveBeenCalled();
+  });
+
+  test('renders task instructions, plot, priority, date, AI reason, and location requirement', async () => {
+    render(<TaskDetailScreen />);
+
+    await screen.findByText(task.judul);
+    expect(screen.getByText('Lahan: Sawah Utara')).toBeOnTheScreen();
+    expect(screen.getByText('Prioritas: Sedang')).toBeOnTheScreen();
+    expect(screen.getByText('Jadwal: 2026-07-30')).toBeOnTheScreen();
+    expect(
+      screen.getByText('Instruksi: Bersihkan saluran air di sisi utara.')
+    ).toBeOnTheScreen();
+    expect(
+      screen.getByText(
+        'Alasan AI: Hujan tinggi membuat saluran perlu segera diperiksa.'
+      )
+    ).toBeOnTheScreen();
+    expect(screen.getByText('Bukti lokasi: Wajib')).toBeOnTheScreen();
+  });
+
+  test('rejects a task assigned to another farmer before loading plot or evidence', async () => {
+    taskMocks.fetchTaskDetail.mockResolvedValue({
+      ...task,
+      assignedTo: 'farmer-2',
+    });
+    render(<TaskDetailScreen />);
+
+    expect(
+      await screen.findByText('Task ini tidak ditugaskan kepada akun Anda.')
+    ).toBeOnTheScreen();
+    expect(screen.queryByText(task.judul)).toBeNull();
+    expect(plotMocks.fetchPlotById).not.toHaveBeenCalled();
+    expect(evidenceMocks.fetchTaskEvidenceAttempts).not.toHaveBeenCalled();
+  });
+
+  test('shows a controlled message instead of a raw task-detail backend error', async () => {
+    const rawBackendError = 'relation public.tasks leaked internal details';
+    taskMocks.fetchTaskDetail.mockRejectedValue(new Error(rawBackendError));
+    render(<TaskDetailScreen />);
+
+    expect(
+      await screen.findByText('Detail task belum dapat dimuat. Silakan coba lagi.')
+    ).toBeOnTheScreen();
+    expect(screen.queryByText(rawBackendError)).toBeNull();
+    expect(JSON.stringify(alertSpy.mock.calls)).not.toContain(rawBackendError);
+  });
+
+  test('requests a fresh GPS reading to unlock and another fresh reading before upload', async () => {
+    const firstReading = granted();
+    const secondReading = granted({ latitude: -7.2501, longitude: 112.7601 });
+    locationMocks.requestCurrentLocation
+      .mockResolvedValueOnce(firstReading)
+      .mockResolvedValueOnce(secondReading);
+    render(<TaskDetailScreen />);
+
+    await unlockTask();
+    await chooseEvidence();
+    fireEvent.press(screen.getByRole('button', { name: 'Periksa GPS & Kirim Bukti' }));
+
+    await waitFor(() => {
+      expect(locationMocks.requestCurrentLocation).toHaveBeenCalledTimes(2);
+      expect(evidenceMocks.uploadTaskEvidence).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lat: secondReading.status === 'granted' ? secondReading.coords.latitude : null,
+          lng: secondReading.status === 'granted' ? secondReading.coords.longitude : null,
+        })
+      );
+    });
+    expect(locationMocks.requestCurrentLocation).toHaveBeenNthCalledWith(1, {
+      maxAccuracyM: 200,
+    });
+    expect(locationMocks.requestCurrentLocation).toHaveBeenNthCalledWith(2, {
+      maxAccuracyM: 200,
+    });
+    expect(taskMocks.startTask).toHaveBeenCalledTimes(1);
+    expect(taskMocks.startTask).toHaveBeenCalledWith('task-1');
+  });
+
+  test('prevents an unlock recheck from overlapping a pending submission GPS check', async () => {
+    let resolveSubmissionLocation!: (value: CurrentLocationResult) => void;
+    locationMocks.requestCurrentLocation
+      .mockResolvedValueOnce(granted())
+      .mockImplementationOnce(
+        () =>
+          new Promise<CurrentLocationResult>((resolve) => {
+            resolveSubmissionLocation = resolve;
+          })
+      );
+    render(<TaskDetailScreen />);
+
+    await unlockTask();
+    await chooseEvidence();
+    fireEvent.press(screen.getByRole('button', { name: 'Periksa GPS & Kirim Bukti' }));
+    await waitFor(() => {
+      expect(locationMocks.requestCurrentLocation).toHaveBeenCalledTimes(2);
+    });
+
+    expect(screen.queryByRole('button', { name: 'Periksa Lagi' })).toBeNull();
+
+    await act(async () => {
+      resolveSubmissionLocation(granted());
+    });
+    await waitFor(() => {
+      expect(evidenceMocks.uploadTaskEvidence).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  test('keeps the photo and note and skips upload when the second reading is outside', async () => {
+    locationMocks.requestCurrentLocation
+      .mockResolvedValueOnce(granted())
+      .mockResolvedValueOnce(granted({ latitude: -7.5, longitude: 112.9 }));
+    render(<TaskDetailScreen />);
+
+    await unlockTask();
+    await chooseEvidence();
+    fireEvent.changeText(screen.getByLabelText('Catatan Bukti'), 'Saluran sudah bersih');
+    fireEvent.press(screen.getByRole('button', { name: 'Periksa GPS & Kirim Bukti' }));
+
+    expect(await screen.findByText('Lokasi berubah. Bukti belum dikirim.')).toBeOnTheScreen();
+    expect(screen.getByDisplayValue('Saluran sudah bersih')).toBeOnTheScreen();
+    expect(screen.getByText('Ganti Foto Bukti')).toBeOnTheScreen();
+    expect(evidenceMocks.uploadTaskEvidence).not.toHaveBeenCalled();
+  });
+
+  test('keeps the photo and note and skips upload when the second reading has low accuracy', async () => {
+    locationMocks.requestCurrentLocation
+      .mockResolvedValueOnce(granted())
+      .mockResolvedValueOnce(lowAccuracy());
+    render(<TaskDetailScreen />);
+
+    await unlockTask();
+    await chooseEvidence();
+    fireEvent.changeText(screen.getByLabelText('Catatan Bukti'), 'Foto pematang selesai');
+    fireEvent.press(screen.getByRole('button', { name: 'Periksa GPS & Kirim Bukti' }));
+
+    expect(
+      await screen.findByText(
+        'Akurasi GPS berubah. Bukti belum dikirim; pindah ke area terbuka lalu coba lagi.'
+      )
+    ).toBeOnTheScreen();
+    expect(screen.getByDisplayValue('Foto pematang selesai')).toBeOnTheScreen();
+    expect(screen.getByText('Ganti Foto Bukti')).toBeOnTheScreen();
+    expect(evidenceMocks.uploadTaskEvidence).not.toHaveBeenCalled();
+  });
+
+  test.each(['missing accuracy', 'a stale timestamp'] as const)(
+    'keeps the draft and skips upload when the second reading has %s',
+    async (issue) => {
+      const invalidSubmissionReading = granted();
+      locationMocks.requestCurrentLocation
+        .mockResolvedValueOnce(granted())
+        .mockResolvedValueOnce({
+          ...invalidSubmissionReading,
+          accuracyM:
+            issue === 'missing accuracy'
+              ? null
+              : invalidSubmissionReading.accuracyM,
+          timestamp:
+            issue === 'a stale timestamp'
+              ? Date.now() - 120_000
+              : invalidSubmissionReading.timestamp,
+        });
+      render(<TaskDetailScreen />);
+
+      await unlockTask();
+      await chooseEvidence();
+      fireEvent.changeText(screen.getByLabelText('Catatan Bukti'), 'Draft tetap tersimpan');
+      fireEvent.press(screen.getByRole('button', { name: 'Periksa GPS & Kirim Bukti' }));
+
+      expect(
+        await screen.findByText(
+          'Akurasi GPS berubah. Bukti belum dikirim; pindah ke area terbuka lalu coba lagi.'
+        )
+      ).toBeOnTheScreen();
+      expect(screen.getByDisplayValue('Draft tetap tersimpan')).toBeOnTheScreen();
+      expect(screen.getByText('Ganti Foto Bukti')).toBeOnTheScreen();
+      expect(evidenceMocks.uploadTaskEvidence).not.toHaveBeenCalled();
+    }
+  );
+
+  test('shows normal submit without either GPS gate for a non-location task', async () => {
+    taskMocks.fetchTaskDetail.mockResolvedValue({ ...task, requiresLocation: false });
+    render(<TaskDetailScreen />);
+
+    expect(await screen.findByRole('button', { name: 'Kirim Bukti' })).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Periksa Lokasi Task' })).toBeNull();
+    expect(locationMocks.requestCurrentLocation).not.toHaveBeenCalled();
+
+    await chooseEvidence();
+    fireEvent.press(screen.getByRole('button', { name: 'Kirim Bukti' }));
+
+    await waitFor(() => {
+      expect(evidenceMocks.uploadTaskEvidence).toHaveBeenCalledWith(
+        expect.objectContaining({ lat: null, lng: null })
+      );
+    });
+    expect(locationMocks.requestCurrentLocation).not.toHaveBeenCalled();
+  });
+
+  test('shows a controlled message instead of a raw evidence-upload backend error', async () => {
+    const rawBackendError = 'storage bucket task-evidence policy details';
+    taskMocks.fetchTaskDetail.mockResolvedValue({
+      ...task,
+      requiresLocation: false,
+    });
+    evidenceMocks.uploadTaskEvidence.mockRejectedValue(new Error(rawBackendError));
+    render(<TaskDetailScreen />);
+
+    await screen.findByRole('button', { name: 'Kirim Bukti' });
+    await chooseEvidence();
+    fireEvent.changeText(
+      screen.getByLabelText('Catatan Bukti'),
+      'Draft tetap tersedia'
+    );
+    fireEvent.press(screen.getByRole('button', { name: 'Kirim Bukti' }));
+
+    expect(
+      await screen.findByText(
+        'Bukti belum dapat diunggah. Periksa koneksi lalu coba lagi.'
+      )
+    ).toBeOnTheScreen();
+    expect(screen.queryByText(rawBackendError)).toBeNull();
+    expect(JSON.stringify(alertSpy.mock.calls)).not.toContain(rawBackendError);
+    expect(screen.getByDisplayValue('Draft tetap tersedia')).toBeOnTheScreen();
+    expect(screen.getByText('Ganti Foto Bukti')).toBeOnTheScreen();
+    expect(taskMocks.startTask).not.toHaveBeenCalled();
+  });
+
+  test('registers one attempt, reloads detail, and enters pending review without completing the task', async () => {
+    const pendingAttempt = evidenceAttempt();
+    taskMocks.fetchTaskDetail
+      .mockResolvedValueOnce({ ...task, requiresLocation: false })
+      .mockResolvedValueOnce({
+        ...task,
+        requiresLocation: false,
+        status: 'sedang_dikerjakan',
+        latestEvidence: { status: 'pending', reviewNote: null },
+      });
+    evidenceMocks.fetchTaskEvidenceAttempts
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([pendingAttempt]);
+    evidenceMocks.uploadTaskEvidence.mockResolvedValue(pendingAttempt);
+    render(<TaskDetailScreen />);
+
+    await screen.findByRole('button', { name: 'Kirim Bukti' });
+    await chooseEvidence();
+    fireEvent.changeText(
+      screen.getByLabelText('Catatan Bukti'),
+      'Saluran sudah bersih'
+    );
+    fireEvent.press(screen.getByRole('button', { name: 'Kirim Bukti' }));
+
+    expect(
+      await screen.findByText(
+        'Bukti terkirim dan menunggu review internal'
+      )
+    ).toBeOnTheScreen();
+    expect(evidenceMocks.uploadTaskEvidence).toHaveBeenCalledTimes(1);
+    expect(taskMocks.fetchTaskDetail).toHaveBeenCalledTimes(2);
+    expect(evidenceMocks.fetchTaskEvidenceAttempts).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('Percobaan 1')).toBeOnTheScreen();
+    expect(screen.queryByText('Pilih Foto Bukti')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Kirim Bukti' })).toBeNull();
+  });
+
+  test('blocks a new picker and submission while the latest attempt is pending', async () => {
+    evidenceMocks.fetchTaskEvidenceAttempts.mockResolvedValue([
+      evidenceAttempt(),
+    ]);
+    taskMocks.fetchTaskDetail.mockResolvedValue({
+      ...task,
+      status: 'sedang_dikerjakan',
+      latestEvidence: { status: 'pending', reviewNote: null },
+    });
+    render(<TaskDetailScreen />);
+
+    expect(
+      await screen.findByText('Menunggu review internal')
+    ).toBeOnTheScreen();
+    expect(screen.getByText('Percobaan 1')).toBeOnTheScreen();
+    expect(screen.queryByText('Pilih Foto Bukti')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Periksa Lokasi Task' })
+    ).toBeNull();
+  });
+
+  test('shows revision history and reviewer note before enabling a new attempt', async () => {
+    evidenceMocks.fetchTaskEvidenceAttempts.mockResolvedValue([
+      evidenceAttempt({
+        status: 'revision_requested',
+        reviewNote: 'Ambil foto lebih dekat ke saluran.',
+        reviewedAt: '2026-07-30T02:00:00.000Z',
+      }),
+    ]);
+    taskMocks.fetchTaskDetail.mockResolvedValue({
+      ...task,
+      status: 'sedang_dikerjakan',
+      latestEvidence: {
+        status: 'revision_requested',
+        reviewNote: 'Ambil foto lebih dekat ke saluran.',
+      },
+    });
+    render(<TaskDetailScreen />);
+
+    expect(
+      (await screen.findAllByText('Perlu perbaikan')).length
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getAllByText('Catatan reviewer: Ambil foto lebih dekat ke saluran.')
+        .length
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getByRole('button', { name: 'Periksa Lokasi Task' })
+    ).toBeOnTheScreen();
+
+    locationMocks.requestCurrentLocation.mockResolvedValueOnce(granted());
+    await unlockTask();
+    expect(screen.getByText('Pilih Foto Bukti')).toBeOnTheScreen();
+  });
+
+  test('renders accepted evidence as completed read-only history', async () => {
+    evidenceMocks.fetchTaskEvidenceAttempts.mockResolvedValue([
+      evidenceAttempt({
+        status: 'accepted',
+        reviewedAt: '2026-07-30T02:00:00.000Z',
+      }),
+    ]);
+    taskMocks.fetchTaskDetail.mockResolvedValue({
+      ...task,
+      status: 'selesai',
+      latestEvidence: { status: 'accepted', reviewNote: null },
+    });
+    render(<TaskDetailScreen />);
+
+    expect(await screen.findByText('Task selesai')).toBeOnTheScreen();
+    expect(screen.getByText('Diterima')).toBeOnTheScreen();
+    expect(screen.getByText('Percobaan 1')).toBeOnTheScreen();
+    expect(screen.queryByText('Pilih Foto Bukti')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Periksa Lokasi Task' })
+    ).toBeNull();
+  });
+
+  test('renders a grandfathered completed task without claiming evidence was accepted', async () => {
+    evidenceMocks.fetchTaskEvidenceAttempts.mockResolvedValue([]);
+    taskMocks.fetchTaskDetail.mockResolvedValue({
+      ...task,
+      status: 'selesai',
+      latestEvidence: null,
+    });
+    render(<TaskDetailScreen />);
+
+    expect(await screen.findByText('Task selesai')).toBeOnTheScreen();
+    expect(
+      screen.getByText('Diselesaikan sebelum alur review bukti diberlakukan.')
+    ).toBeOnTheScreen();
+    expect(screen.queryByText(/Bukti telah diterima internal/i)).toBeNull();
+    expect(screen.queryByText('Riwayat Bukti')).toBeNull();
+    expect(screen.queryByText('Pilih Foto Bukti')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Periksa Lokasi Task' })
+    ).toBeNull();
+  });
+
+  test.each(['missing accuracy', 'a stale timestamp'] as const)(
+    'blocks an unlock reading with %s before the geofence check',
+    async (issue) => {
+      const invalidUnlockReading = granted();
+      locationMocks.requestCurrentLocation.mockResolvedValueOnce({
+        ...invalidUnlockReading,
+        accuracyM:
+          issue === 'missing accuracy' ? null : invalidUnlockReading.accuracyM,
+        timestamp:
+          issue === 'a stale timestamp'
+            ? Date.now() - 120_000
+            : invalidUnlockReading.timestamp,
+      });
+      render(<TaskDetailScreen />);
+
+      fireEvent.press(await screen.findByRole('button', { name: 'Periksa Lokasi Task' }));
+
+      expect(
+        await screen.findByText(
+          'Akurasi GPS belum cukup baik. Pindah ke area terbuka lalu periksa lagi.'
+        )
+      ).toBeOnTheScreen();
+      expect(screen.queryByText('Pilih Foto Bukti')).toBeNull();
+    }
+  );
+
+  test('opens app settings from a blocked location action', async () => {
+    locationMocks.requestCurrentLocation.mockResolvedValueOnce({
+      status: 'permission-blocked',
+      coords: null,
+      accuracyM: null,
+      timestamp: null,
+      message: 'Izin lokasi diblokir. Aktifkan izin lokasi AgroWeather di Pengaturan.',
+      canOpenSettings: true,
+    });
+    render(<TaskDetailScreen />);
+
+    fireEvent.press(await screen.findByRole('button', { name: 'Periksa Lokasi Task' }));
+    fireEvent.press(await screen.findByRole('button', { name: 'Buka Pengaturan' }));
+
+    expect(locationMocks.openLocationSettings).toHaveBeenCalledWith(
+      'permission-blocked'
+    );
+  });
+
+  test('opens device-location recovery after submit detects disabled services', async () => {
+    locationMocks.requestCurrentLocation
+      .mockResolvedValueOnce(granted())
+      .mockResolvedValueOnce({
+        status: 'services-disabled',
+        coords: null,
+        accuracyM: null,
+        timestamp: null,
+        message: 'GPS perangkat belum aktif. Nyalakan layanan lokasi lalu coba lagi.',
+        canOpenSettings: true,
+      });
+    render(<TaskDetailScreen />);
+
+    await unlockTask();
+    await chooseEvidence();
+    fireEvent.press(
+      screen.getByRole('button', { name: 'Periksa GPS & Kirim Bukti' })
+    );
+    fireEvent.press(
+      await screen.findByRole('button', { name: 'Buka Pengaturan' })
+    );
+
+    expect(locationMocks.openLocationSettings).toHaveBeenCalledWith(
+      'services-disabled'
+    );
+    expect(evidenceMocks.uploadTaskEvidence).not.toHaveBeenCalled();
+  });
+
+  test('ignores a stale detail response after the route changes', async () => {
+    let resolveFirst!: (value: FarmTask) => void;
+    taskMocks.fetchTaskDetail
+      .mockImplementationOnce(
+        () => new Promise<FarmTask>((resolve) => {
+          resolveFirst = resolve;
+        })
+      )
+      .mockResolvedValueOnce({
+        ...task,
+        id: 'task-2',
+        judul: 'Periksa pompa',
+      });
+    const view = render(<TaskDetailScreen />);
+
+    routerMocks.__setParams({ id: 'task-2' });
+    view.rerender(<TaskDetailScreen />);
+    expect(await screen.findByText('Periksa pompa')).toBeOnTheScreen();
+
+    await act(async () => {
+      resolveFirst(task);
+    });
+    expect(plotMocks.fetchPlotById).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Bersihkan saluran')).toBeNull();
+  });
+
+  test('does not show the AI placeholder card in the active workflow', async () => {
+    render(<TaskDetailScreen />);
+
+    await screen.findByText(task.judul);
+
+    expect(screen.queryByText('Analisis AI MVP')).toBeNull();
+  });
+
+  test('uses only constrained task transitions without direct completion helpers', () => {
+    const routeSource = readFileSync(
+      path.join(process.cwd(), 'src/app/(app)/task/[id].tsx'),
+      'utf8'
+    );
+    const serviceSource = readFileSync(
+      path.join(process.cwd(), 'src/services/tasks.ts'),
+      'utf8'
+    );
+
+    expect(routeSource).not.toMatch(/markTaskComplete|unlockTask/);
+    expect(serviceSource).not.toMatch(
+      /export async function (markTaskComplete|unlockTask)/
+    );
+  });
+});

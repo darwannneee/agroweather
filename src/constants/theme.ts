@@ -1,65 +1,65 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
-
-import '@/global.css';
-
 import { Platform } from 'react-native';
 
 export const Colors = {
-  light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
-  },
-  dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
-  },
+  forest: '#1F542E',
+  forestPressed: '#173F23',
+  forestMuted: '#314A38',
+  leaf: '#4C9A2A',
+  mint: '#ECF7E7',
+  sky: '#E5F3FF',
+  skyText: '#27506B',
+  amber: '#FFF6D8',
+  amberText: '#7A5918',
+  harvest: '#F3BF4F',
+  harvestPressed: '#DDA936',
+  canvas: '#F6F8F3',
+  surface: '#FFFFFF',
+  ink: '#203026',
+  muted: '#657165',
+  border: '#DFE7DC',
+  successBackground: '#DCEBD8',
+  successBorder: '#BDD4B8',
+  successText: '#21492A',
+  warningBackground: '#FFF3D8',
+  warningBorder: '#EBD298',
+  warningText: '#71541D',
+  dangerBackground: '#FDE7E1',
+  dangerBorder: '#EBC1B6',
+  dangerText: '#633027',
 } as const;
-
-export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
-
-export const Fonts = Platform.select({
-  ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
-  },
-  default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
-  },
-  web: {
-    sans: 'var(--font-display)',
-    serif: 'var(--font-serif)',
-    rounded: 'var(--font-rounded)',
-    mono: 'var(--font-mono)',
-  },
-});
 
 export const Spacing = {
-  half: 2,
   one: 4,
   two: 8,
-  three: 16,
-  four: 24,
-  five: 32,
-  six: 64,
+  three: 12,
+  four: 16,
+  five: 24,
+  six: 32,
+  seven: 48,
 } as const;
 
-export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
-export const MaxContentWidth = 800;
+export const Radius = {
+  input: 12,
+  button: 14,
+  card: 18,
+  hero: 20,
+  pill: 999,
+} as const;
+
+export const Typography = {
+  display: { fontSize: 32, lineHeight: 38, fontWeight: '800' as const },
+  title: { fontSize: 24, lineHeight: 30, fontWeight: '800' as const },
+  subtitle: { fontSize: 18, lineHeight: 24, fontWeight: '700' as const },
+  body: { fontSize: 16, lineHeight: 24, fontWeight: '400' as const },
+  bodyStrong: { fontSize: 16, lineHeight: 24, fontWeight: '700' as const },
+  small: { fontSize: 14, lineHeight: 20, fontWeight: '400' as const },
+  smallStrong: { fontSize: 14, lineHeight: 20, fontWeight: '700' as const },
+  label: { fontSize: 12, lineHeight: 16, fontWeight: '800' as const },
+} as const;
+
+export const Fonts = Platform.select({
+  ios: { sans: 'Avenir Next', mono: 'Menlo' },
+  android: { sans: 'sans-serif', mono: 'monospace' },
+  default: { sans: 'System', mono: 'monospace' },
+  web: { sans: 'system-ui, sans-serif', mono: 'ui-monospace, monospace' },
+});
