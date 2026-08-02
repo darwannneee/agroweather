@@ -1,8 +1,6 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
-import { IconBadge } from '@/components/ui/icon-badge';
-import { InfoRow } from '@/components/ui/info-row';
 import { StatusPill } from '@/components/ui/status-pill';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -15,9 +13,9 @@ type AiDraftCardProps = {
 };
 
 const priority = {
-  low: { label: 'Prioritas rendah', tone: 'neutral' },
-  medium: { label: 'Prioritas sedang', tone: 'warning' },
-  high: { label: 'Prioritas tinggi', tone: 'danger' },
+  low: { label: 'Rendah', tone: 'neutral' },
+  medium: { label: 'Sedang', tone: 'warning' },
+  high: { label: 'Tinggi', tone: 'danger' },
 } as const satisfies Record<
   TaskPriority,
   {
@@ -26,17 +24,13 @@ const priority = {
   }
 >;
 
-export function AiDraftCard({
-  draft,
-  onPress,
-  disabled = false,
-}: AiDraftCardProps) {
+export function AiDraftCard({ draft, onPress, disabled = false }: AiDraftCardProps) {
   const priorityStatus = priority[draft.priority];
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Buka draft AI ${draft.title}, lahan ${draft.plotName}, petani ${draft.proposedAssigneeName}, ${priorityStatus.label.toLowerCase()}`}
+      accessibilityLabel={`Buka draft AI ${draft.title}`}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
@@ -46,43 +40,68 @@ export function AiDraftCard({
         disabled && styles.disabled,
       ]}
     >
-      <SurfaceCard>
-        <View style={styles.header}>
-          <IconBadge icon="🤖" label={`Draft AI ${draft.title}`} tone="amber" />
-          <View style={styles.title}>
-            <AppText variant="subtitle">
-              {draft.title}
+      <SurfaceCard style={styles.cardContainer}>
+        <View style={styles.cardContent}>
+          {/* Header: Judul Tugas & Status Prioritas */}
+          <View style={styles.header}>
+            <View style={styles.titleContainer}>
+              <AppText variant="bodyStrong" style={styles.titleText}>
+                {draft.title}
+              </AppText>
+              <AppText variant="small" color={Colors.muted}>
+                Rekomendasi Operasional AI
+              </AppText>
+            </View>
+            <StatusPill
+              label={priorityStatus.label}
+              tone={priorityStatus.tone}
+            />
+          </View>
+
+          {/* Baris Informasi Detail (Lahan, Petani, Tanggal) */}
+          <View style={styles.metaContainer}>
+            <View style={styles.metaItem}>
+              <AppText variant="small" color={Colors.muted}>
+                Lahan
+              </AppText>
+              <AppText variant="smallStrong" color={Colors.ink} numberOfLines={1}>
+                {draft.plotName}
+              </AppText>
+            </View>
+
+            <View style={styles.verticalDivider} />
+
+            <View style={styles.metaItem}>
+              <AppText variant="small" color={Colors.muted}>
+                Petani
+              </AppText>
+              <AppText variant="smallStrong" color={Colors.ink} numberOfLines={1}>
+                {draft.proposedAssigneeName}
+              </AppText>
+            </View>
+
+            <View style={styles.verticalDivider} />
+
+            <View style={styles.metaItem}>
+              <AppText variant="small" color={Colors.muted}>
+                Tanggal
+              </AppText>
+              <AppText variant="smallStrong" color={Colors.ink} numberOfLines={1}>
+                {draft.scheduledFor}
+              </AppText>
+            </View>
+          </View>
+
+          {/* Box Alasan AI */}
+          <View style={styles.reasonBox}>
+            <AppText variant="smallStrong" color={Colors.ink} style={styles.reasonTitle}>
+              Alasan AI
             </AppText>
-            <AppText variant="small" color={Colors.muted}>
-              Rekomendasi operasional dari AI
+            <AppText variant="small" color={Colors.muted} style={styles.reasonText}>
+              {draft.aiReason}
             </AppText>
           </View>
-          <StatusPill
-            label={priorityStatus.label}
-            tone={priorityStatus.tone}
-          />
         </View>
-        <InfoRow
-          icon="🌾"
-          label="Lahan"
-          value={`Lahan: ${draft.plotName}`}
-          tone="forest"
-        />
-        <InfoRow
-          icon="👨‍🌾"
-          label="Petani"
-          value={`Petani: ${draft.proposedAssigneeName}`}
-          tone="sky"
-        />
-        <InfoRow
-          icon="📅"
-          label="Tanggal"
-          value={`Tanggal tugas: ${draft.scheduledFor}`}
-          tone="neutral"
-        />
-        <AppText variant="small" color={Colors.muted}>
-          Alasan AI: {draft.aiReason}
-        </AppText>
       </SurfaceCard>
     </Pressable>
   );
@@ -94,18 +113,60 @@ const styles = StyleSheet.create({
     borderRadius: Radius.card,
   },
   pressed: {
-    opacity: 0.82,
+    opacity: 0.75, // Efek sedikit pudar saat kartu diklik
   },
   disabled: {
     opacity: 0.55,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+  cardContainer: {
+    padding: Spacing.three,
+  },
+  cardContent: {
     gap: Spacing.three,
   },
-  title: {
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: Spacing.two,
+  },
+  titleContainer: {
     flex: 1,
-    gap: Spacing.one,
+    gap: 2,
+  },
+  titleText: {
+    lineHeight: 22,
+  },
+  metaContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.canvas,
+    borderRadius: Radius.card,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    justifyContent: 'space-between',
+  },
+  metaItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  verticalDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: Colors.border,
+  },
+  reasonBox: {
+    backgroundColor: Colors.canvas,
+    padding: Spacing.three,
+    borderRadius: Radius.card,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.forest,
+  },
+  reasonTitle: {
+    marginBottom: 4,
+  },
+  reasonText: {
+    lineHeight: 18,
   },
 });

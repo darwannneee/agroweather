@@ -1,9 +1,7 @@
-import { StyleSheet, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AppButton } from '@/components/ui/app-button';
 import { AppText } from '@/components/ui/app-text';
-import { IconBadge } from '@/components/ui/icon-badge';
-import { InfoRow } from '@/components/ui/info-row';
 import { StatusPill } from '@/components/ui/status-pill';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Spacing } from '@/constants/theme';
@@ -17,6 +15,20 @@ type PlotCardProps = {
   onToggleStatus: () => void;
 };
 
+function PlotDetailRow({ icon, label, value }: { icon: keyof typeof Feather.glyphMap, label: string, value: string }) {
+  return (
+    <View style={styles.detailRow}>
+      <Feather name={icon} size={14} color={Colors.muted} />
+      <AppText variant="small" color={Colors.muted} style={styles.detailLabel}>
+        {label}:
+      </AppText>
+      <AppText variant="smallStrong" color={Colors.ink} numberOfLines={1} style={styles.detailValue}>
+        {value}
+      </AppText>
+    </View>
+  );
+}
+
 export function PlotCard({
   plot,
   statusLoading = false,
@@ -29,87 +41,123 @@ export function PlotCard({
   const farmerLabel =
     plot.farmerNames && plot.farmerNames.length > 0
       ? plot.farmerNames.join(', ')
-      : plot.farmerName ?? 'Belum diassign';
+      : plot.farmerName ?? 'Belum ada petani';
 
   return (
-    <SurfaceCard accessibilityLabel={`Lahan ${plot.namaLahan}`}>
+    <SurfaceCard accessibilityLabel={`Lahan ${plot.namaLahan}`} style={styles.cardLayout}>
       <View style={styles.header}>
-        <IconBadge icon="🗺️" label={`Lahan ${plot.namaLahan}`} tone="forest" />
+        <View style={[styles.iconBox, { backgroundColor: active ? Colors.successBackground : Colors.canvas }]}>
+          <Feather name="map" size={20} color={active ? Colors.forest : Colors.muted} />
+        </View>
         <View style={styles.copy}>
-          <AppText variant="subtitle">{plot.namaLahan}</AppText>
-          <AppText variant="small" color={Colors.muted}>
+          <AppText variant="bodyStrong" numberOfLines={1}>{plot.namaLahan}</AppText>
+          <AppText variant="small" color={Colors.muted} numberOfLines={1}>
             {plot.jenisTanaman} · {plot.faseLahan ?? 'Fase belum dicatat'}
           </AppText>
         </View>
-        <StatusPill
-          label={active ? 'Aktif' : 'Nonaktif'}
-          tone={active ? 'success' : 'danger'}
-        />
+        {/* FIX: Dibungkus View dengan flexShrink: 0 agar tidak terpotong jadi "Akti" */}
+        <View style={styles.statusWrapper}>
+          <StatusPill
+            label={active ? 'Aktif' : 'Nonaktif'}
+            tone={active ? 'success' : 'neutral'}
+          />
+        </View>
       </View>
 
+      <View style={styles.divider} />
+
       <View style={styles.infoGrid}>
-        <InfoRow
-          icon="👨‍🌾"
-          label="Petani"
-          value={`Petani: ${farmerLabel}`}
-          tone="forest"
-        />
-        <InfoRow
-          icon="📐"
-          label="Luas"
-          value={`Luas: ${plot.luasHektar ?? '-'} ha`}
-          tone="sky"
-        />
-        <InfoRow
-          icon="📍"
-          label="Radius"
-          value={`Radius: ${plot.radiusGeofenceM} meter`}
-          tone="amber"
-        />
-        <InfoRow
-          icon="🛰️"
-          label="Koordinat"
-          value={`${plot.latCenter.toFixed(5)}, ${plot.lngCenter.toFixed(5)}`}
-          tone="neutral"
-        />
+        <PlotDetailRow icon="users" label="Petani" value={farmerLabel} />
+        <PlotDetailRow icon="maximize" label="Luas" value={`${plot.luasHektar ?? '-'} ha`} />
+        <PlotDetailRow icon="crosshair" label="Radius" value={`${plot.radiusGeofenceM} meter`} />
+        <PlotDetailRow icon="navigation" label="GPS" value={`${plot.latCenter.toFixed(5)}, ${plot.lngCenter.toFixed(5)}`} />
       </View>
 
       <View style={styles.actions}>
-        <AppButton
-          label="Edit"
-          accessibilityLabel={`Edit ${plot.namaLahan}`}
-          variant="secondary"
-          onPress={onEdit}
-        />
-        <AppButton
-          label={statusAction}
-          accessibilityLabel={`${statusAction} ${plot.namaLahan}`}
-          variant={active ? 'danger' : 'forest'}
-          loading={statusLoading}
-          disabled={statusDisabled}
+        <Pressable 
+          onPress={onEdit} 
+          style={({ pressed }) => [styles.actionTextBtn, pressed && styles.pressed]}
+        >
+          <AppText variant="smallStrong" color={Colors.forest}>Edit Data</AppText>
+        </Pressable>
+        
+        <Pressable 
           onPress={onToggleStatus}
-        />
+          disabled={statusLoading || statusDisabled} 
+          style={({ pressed }) => [
+            styles.actionTextBtn, 
+            pressed && styles.pressed,
+            (statusLoading || statusDisabled) && styles.disabledBtn
+          ]}
+        >
+          <AppText variant="smallStrong" color={active ? Colors.dangerText : Colors.forest}>
+            {statusLoading ? 'Memproses...' : statusAction}
+          </AppText>
+        </Pressable>
       </View>
     </SurfaceCard>
   );
 }
 
 const styles = StyleSheet.create({
+  cardLayout: {
+    padding: Spacing.four,
+    gap: 0,
+  },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: Spacing.three,
+    paddingBottom: Spacing.four,
+  },
+  iconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   copy: {
     flex: 1,
+    gap: 2,
+  },
+  statusWrapper: {
+    flexShrink: 0, // Mencegah terpotong
+    marginLeft: Spacing.two,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginBottom: Spacing.four,
   },
   infoGrid: {
+    gap: Spacing.three,
+    marginBottom: Spacing.five,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: Spacing.two,
+  },
+  detailLabel: {
+    width: 55,
+  },
+  detailValue: {
+    flex: 1,
   },
   actions: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-    gap: Spacing.two,
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
+  actionTextBtn: {
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.one,
+  },
+  pressed: {
+    opacity: 0.6,
+  },
+  disabledBtn: {
+    opacity: 0.4,
+  }
 });

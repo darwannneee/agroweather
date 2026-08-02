@@ -1,32 +1,33 @@
+import { Feather } from '@expo/vector-icons';
 import { StyleSheet, View } from 'react-native';
 
-import { Colors, Radius, Spacing } from '@/constants/theme';
 import { AppButton } from '@/components/ui/app-button';
 import { AppText } from '@/components/ui/app-text';
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge';
+import { Colors, Radius, Spacing } from '@/constants/theme';
 
 type CardState = 'idle' | 'checking' | 'success' | 'warning' | 'danger' | 'neutral';
 
 const stateConfig = {
   idle: {
     eyebrow: 'GPS BELUM AKTIF',
-    icon: '📍',
+    icon: 'map-pin',
     tone: 'forest',
     background: Colors.forest,
-    border: Colors.border,
+    border: Colors.forest,
     text: Colors.surface,
   },
   checking: {
     eyebrow: 'MENGAMBIL LOKASI',
-    icon: '🛰️',
+    icon: 'navigation',
     tone: 'sky',
     background: Colors.forestMuted,
-    border: Colors.border,
+    border: Colors.forestMuted,
     text: Colors.surface,
   },
   success: {
     eyebrow: 'DI DALAM RADIUS',
-    icon: '✅',
+    icon: 'check-circle',
     tone: 'forest',
     background: Colors.successBackground,
     border: Colors.successBorder,
@@ -34,7 +35,7 @@ const stateConfig = {
   },
   warning: {
     eyebrow: 'PERIKSA LOKASI',
-    icon: '⚠️',
+    icon: 'alert-triangle',
     tone: 'amber',
     background: Colors.warningBackground,
     border: Colors.warningBorder,
@@ -42,7 +43,7 @@ const stateConfig = {
   },
   danger: {
     eyebrow: 'LOKASI BERMASALAH',
-    icon: '🚫',
+    icon: 'x-circle',
     tone: 'danger',
     background: Colors.dangerBackground,
     border: Colors.dangerBorder,
@@ -50,7 +51,7 @@ const stateConfig = {
   },
   neutral: {
     eyebrow: 'STATUS LOKASI',
-    icon: '📍',
+    icon: 'info',
     tone: 'neutral',
     background: Colors.surface,
     border: Colors.border,
@@ -87,7 +88,7 @@ export function LocationActionCard({
     >
       <View style={styles.header}>
         <IconBadge
-          icon={config.icon}
+          icon={<Feather name={config.icon as any} size={18} color={dark ? Colors.ink : config.text} />}
           label={title}
           tone={config.tone as IconBadgeTone}
         />
@@ -96,14 +97,20 @@ export function LocationActionCard({
           <AppText variant="subtitle" color={config.text}>{title}</AppText>
         </View>
       </View>
-      <AppText variant="small" color={config.text}>{message}</AppText>
-      {meta ? <AppText variant="label" color={config.text}>{meta}</AppText> : null}
+      
+      <View style={styles.body}>
+        <AppText variant="small" color={config.text}>{message}</AppText>
+        {meta ? <AppText variant="label" color={config.text}>{meta}</AppText> : null}
+      </View>
+
       {state !== 'checking' && actionLabel && onAction ? (
-        <AppButton
-          label={actionLabel}
-          variant={dark ? 'primary' : 'secondary'}
-          onPress={onAction}
-        />
+        <View style={styles.actionContainer}>
+          <AppButton
+            label={actionLabel}
+            variant={dark ? 'primary' : 'secondary'}
+            onPress={onAction}
+          />
+        </View>
       ) : null}
     </View>
   );
@@ -112,17 +119,24 @@ export function LocationActionCard({
 const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
-    borderRadius: Radius.hero,
+    borderRadius: Radius.card,
     padding: Spacing.four,
-    gap: Spacing.two,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
+    marginBottom: Spacing.three,
   },
   copy: {
     flex: 1,
+    gap: 2,
+  },
+  body: {
     gap: Spacing.one,
+    marginBottom: Spacing.three,
+  },
+  actionContainer: {
+    marginTop: Spacing.one,
   },
 });

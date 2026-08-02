@@ -1,16 +1,20 @@
-import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Feather, Ionicons } from '@expo/vector-icons'; // <-- Import Icon Profesional
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/ui/app-button';
-import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { FormField } from '@/components/ui/form-field';
-import { IconBadge } from '@/components/ui/icon-badge';
-import { InfoRow } from '@/components/ui/info-row';
-import { ScreenHeader } from '@/components/ui/screen-header';
-import { SurfaceCard } from '@/components/ui/surface-card';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, Spacing } from '@/constants/theme';
 import {
   hasErrors,
   validateLoginForm,
@@ -28,6 +32,8 @@ export function safeAuthErrorMessage(_error: unknown): string {
 export default function LoginScreen() {
   const { signIn } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -74,139 +80,178 @@ export default function LoginScreen() {
   }
 
   return (
-    <AppScreen>
-      <ScreenHeader
-        eyebrow="Field First"
-        title="Masuk ke AgroWeather"
-        description="Akses tugas lapangan dan operasional lahan dari satu tempat."
-      />
-
-      <SurfaceCard style={styles.brandCard}>
-        <View style={styles.brandHeader}>
-          <IconBadge icon="🌾" label="AgroWeather" tone="forest" size="lg" />
-          <View style={styles.brandCopy}>
-            <AppText variant="subtitle">Operasional lahan lebih jelas</AppText>
-            <AppText variant="small" color={Colors.muted}>
-              Cuaca, GPS, absen, dan task harian dibuat mudah dibaca di lapangan.
+    <View style={styles.screen}>
+      <KeyboardAvoidingView 
+        style={styles.flex} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          bounces={false}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Header Area dengan Logo dan Kata-kata AgroWeather */}
+          <View style={[styles.headerContainer, { paddingTop: Math.max(insets.top + 40, 60) }]}>
+            <View style={styles.logoRow}>
+              <Ionicons name="leaf" size={42} color={Colors.surface} style={styles.logoIcon} />
+              <AppText variant="display" style={styles.headerTitle}>AgroWeather</AppText>
+            </View>
+            
+            <AppText variant="subtitle" style={styles.headerSubtitle}>
+              Operasional lahan lebih jelas
+            </AppText>
+            <AppText variant="body" style={styles.headerDescription}>
+              Cuaca, GPS, absen, dan task harian dibuat mudah diakses langsung dari lapangan.
             </AppText>
           </View>
-        </View>
-        <View style={styles.featureGrid}>
-          <InfoRow icon="🛰️" label="GPS" value="Trigger manual saat dibutuhkan" tone="sky" />
-          <InfoRow icon="🤖" label="AI" value="Draft task harian dari cuaca" tone="amber" />
-        </View>
-      </SurfaceCard>
 
-      <SurfaceCard style={styles.form}>
-        <FormField
-          label="Email"
-          error={errors.email}
-          inputProps={{
-            accessibilityLabel: 'Email',
-            value: email,
-            onChangeText: handleEmailChange,
-            placeholder: 'email@contoh.com',
-            keyboardType: 'email-address',
-            autoCapitalize: 'none',
-            autoCorrect: false,
-            editable: !submitting,
-          }}
-        />
+          {/* Form Area */}
+          <View style={styles.formContainer}>
+            <View style={styles.formFields}>
+              <FormField
+                label="Email"
+                error={errors.email}
+                leftIcon={<Feather name="mail" size={20} color={Colors.muted} />} // Icon Email Asli
+                inputProps={{
+                  accessibilityLabel: 'Email',
+                  value: email,
+                  onChangeText: handleEmailChange,
+                  placeholder: 'email@contoh.com',
+                  keyboardType: 'email-address',
+                  autoCapitalize: 'none',
+                  autoCorrect: false,
+                  editable: !submitting,
+                }}
+              />
 
-        <View style={styles.passwordField}>
-          <FormField
-            label="Password"
-            error={errors.password}
-            inputProps={{
-              accessibilityLabel: 'Password',
-              value: password,
-              onChangeText: handlePasswordChange,
-              placeholder: 'Masukkan password',
-              secureTextEntry: !passwordVisible,
-              autoCapitalize: 'none',
-              autoCorrect: false,
-              editable: !submitting,
-            }}
-          />
-          <Pressable
-            accessibilityRole="togglebutton"
-            accessibilityLabel="Tampilkan password"
-            accessibilityState={{
-              checked: passwordVisible,
-              disabled: submitting,
-            }}
-            disabled={submitting}
-            hitSlop={8}
-            onPress={() => setPasswordVisible((visible) => !visible)}
-            style={({ pressed }) => [
-              styles.visibilityButton,
-              pressed && styles.visibilityPressed,
-            ]}
-          >
-            <AppText variant="smallStrong" color={Colors.forest}>
-              {passwordVisible ? 'Sembunyikan' : 'Tampilkan'}
+              <FormField
+                label="Password"
+                error={errors.password}
+                leftIcon={<Feather name="lock" size={20} color={Colors.muted} />} // Icon Kunci Asli
+                inputProps={{
+                  accessibilityLabel: 'Password',
+                  value: password,
+                  onChangeText: handlePasswordChange,
+                  placeholder: 'Masukkan password',
+                  secureTextEntry: !passwordVisible,
+                  autoCapitalize: 'none',
+                  autoCorrect: false,
+                  editable: !submitting,
+                }}
+                rightElement={
+                  <Pressable
+                    disabled={submitting}
+                    hitSlop={12}
+                    onPress={() => setPasswordVisible((v) => !v)}
+                  >
+                    {/* Icon Mata Asli */}
+                    <Feather 
+                      name={passwordVisible ? "eye-off" : "eye"} 
+                      size={20} 
+                      color={Colors.forest} 
+                    />
+                  </Pressable>
+                }
+              />
+            </View>
+
+            {submitError ? (
+              <View accessibilityLiveRegion="polite" aria-live="polite" style={styles.errorContainer}>
+                <AppText variant="small" color={Colors.dangerText}>
+                  {submitError}
+                </AppText>
+              </View>
+            ) : null}
+
+            {/* Tombol Login */}
+            <View style={styles.loginButtonWrapper}>
+              <AppButton
+                label="Login"
+                variant="forest"
+                loading={submitting}
+                disabled={submitting}
+                onPress={() => void handleSubmit()}
+              />
+            </View>
+            
+            {/* Informasi Footer Khusus Internal */}
+            <AppText variant="small" color={Colors.muted} style={styles.internalNote}>
+              Aplikasi ini dikhususkan untuk pegawai internal. Hubungi admin untuk mendapatkan akses.
             </AppText>
-          </Pressable>
-        </View>
-
-        {submitError ? (
-          <View accessibilityLiveRegion="polite" aria-live="polite">
-            <AppText variant="small" color={Colors.dangerText}>
-              {submitError}
-            </AppText>
+            
           </View>
-        ) : null}
-
-        <AppButton
-          label="Masuk"
-          icon="→"
-          variant="forest"
-          loading={submitting}
-          disabled={submitting}
-          onPress={() => void handleSubmit()}
-        />
-      </SurfaceCard>
-
-      <AppText variant="small" color={Colors.muted} style={styles.accountNote}>
-        Akun AgroWeather dibuat dan dikelola oleh tim internal.
-      </AppText>
-    </AppScreen>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  form: {
-    gap: Spacing.four,
+  screen: {
+    flex: 1,
+    backgroundColor: Colors.leaf, // Hijau ciri khas aplikasi
   },
-  brandCard: {
-    gap: Spacing.four,
+  flex: {
+    flex: 1,
   },
-  brandHeader: {
+  scrollContent: {
+    flexGrow: 1,
+  },
+  headerContainer: {
+    paddingHorizontal: Spacing.five,
+    paddingBottom: Spacing.six * 1.5, 
+    justifyContent: 'center',
+  },
+  logoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.three,
+    marginBottom: Spacing.three,
   },
-  brandCopy: {
+  logoIcon: {
+    marginRight: Spacing.two,
+  },
+  headerTitle: {
+    color: Colors.surface,
+  },
+  headerSubtitle: {
+    color: Colors.surface,
+    fontWeight: '700',
+    marginBottom: Spacing.two,
+  },
+  headerDescription: {
+    color: Colors.surface,
+    opacity: 0.85,
+    lineHeight: 22,
+  },
+  formContainer: {
     flex: 1,
-    gap: Spacing.one,
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: Spacing.five,
+    paddingTop: Spacing.six + Spacing.two, // Padding atas lebih lebar agar lega
+    paddingBottom: Spacing.six,
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: -5 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 10,
   },
-  featureGrid: {
-    gap: Spacing.two,
+  formFields: {
+    gap: Spacing.five, // Jarak antar input agak dijauhkan agar tidak terlalu padat
+    marginBottom: Spacing.five,
   },
-  passwordField: {
-    gap: Spacing.two,
+  errorContainer: {
+    marginBottom: Spacing.four,
+    alignItems: 'center',
   },
-  visibilityButton: {
-    minHeight: 44,
-    alignSelf: 'flex-end',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.three,
-    borderRadius: Radius.button,
+  loginButtonWrapper: {
+    marginTop: Spacing.one,
   },
-  visibilityPressed: {
-    backgroundColor: Colors.canvas,
-  },
-  accountNote: {
+  internalNote: {
     textAlign: 'center',
-  },
+    marginTop: Spacing.six,
+    paddingHorizontal: Spacing.four,
+    lineHeight: 20,
+  }
 });

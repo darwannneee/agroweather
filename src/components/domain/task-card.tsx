@@ -1,8 +1,7 @@
+import { Feather } from '@expo/vector-icons';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
-import { IconBadge } from '@/components/ui/icon-badge';
-import { InfoRow } from '@/components/ui/info-row';
 import { StatusPill } from '@/components/ui/status-pill';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -27,7 +26,7 @@ type TaskCardProps = {
 
 const taskState = {
   'not-started': { label: 'Belum dimulai', tone: 'neutral' },
-  ready: { label: 'Siap', tone: 'success' },
+  ready: { label: 'Siap dikerjakan', tone: 'success' },
   'check-location': { label: 'Perlu cek lokasi', tone: 'warning' },
   outside: { label: 'Di luar radius', tone: 'danger' },
   'pending-review': { label: 'Menunggu review', tone: 'warning' },
@@ -41,6 +40,28 @@ const priorityLabel = {
   high: 'Tinggi',
 } as const;
 
+function TaskDetailItem({ 
+  icon, 
+  label, 
+  value, 
+  color 
+}: { 
+  icon: keyof typeof Feather.glyphMap, 
+  label: string, 
+  value: string, 
+  color: string 
+}) {
+  return (
+    <View style={styles.detailItem}>
+      <Feather name={icon} size={14} color={color} />
+      <AppText variant="small" color={Colors.muted} style={styles.detailLabel}>
+        {label}
+      </AppText>
+      <AppText variant="smallStrong" color={Colors.ink}>{value}</AppText>
+    </View>
+  );
+}
+
 export function TaskCard({ task, plotName, state, radiusM, onPress }: TaskCardProps) {
   const status = taskState[state];
   const showRadius = (state === 'outside' || state === 'check-location') && radiusM !== undefined;
@@ -52,6 +73,11 @@ export function TaskCard({ task, plotName, state, radiusM, onPress }: TaskCardPr
     `tanggal ${task.scheduledFor}`,
   ].join(', ');
 
+  const priorityColor = 
+    task.priority === 'high' ? Colors.dangerText : 
+    task.priority === 'medium' ? Colors.amberText : 
+    Colors.forest;
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -59,48 +85,57 @@ export function TaskCard({ task, plotName, state, radiusM, onPress }: TaskCardPr
       onPress={onPress}
       style={({ pressed }) => [styles.pressTarget, pressed && styles.pressed]}
     >
-      <SurfaceCard>
+      <SurfaceCard style={styles.cardLayout}>
         <View style={styles.header}>
-          <IconBadge icon="📝" label={`Tugas ${task.judul}`} tone="sky" />
+          <View style={styles.iconBox}>
+            <Feather name="clipboard" size={20} color={Colors.skyText} />
+          </View>
           <View style={styles.copy}>
-            <AppText variant="subtitle">{task.judul}</AppText>
-            <AppText variant="small" color={Colors.muted}>
-              Lahan: {plotName}
-            </AppText>
+            <AppText variant="bodyStrong">{task.judul}</AppText>
+            <View style={styles.plotRow}>
+              <Feather name="map" size={12} color={Colors.muted} />
+              <AppText variant="small" color={Colors.muted}>
+                {plotName}
+              </AppText>
+            </View>
           </View>
           <StatusPill label={status.label} tone={status.tone} />
         </View>
 
+        <View style={styles.divider} />
+
         <View style={styles.infoGrid}>
-          <InfoRow
-            icon="🚦"
-            label="Prioritas"
-            value={`Prioritas: ${priorityLabel[task.priority]}`}
-            tone={task.priority === 'high' ? 'danger' : task.priority === 'medium' ? 'amber' : 'forest'}
+          <TaskDetailItem 
+            icon="flag" 
+            label="Prioritas" 
+            value={priorityLabel[task.priority]} 
+            color={priorityColor} 
           />
-          <InfoRow
-            icon="📅"
-            label="Tanggal"
-            value={`Tanggal tugas: ${task.scheduledFor}`}
-            tone="neutral"
+          <TaskDetailItem 
+            icon="calendar" 
+            label="Tanggal" 
+            value={task.scheduledFor} 
+            color={Colors.muted} 
           />
+          
+          {task.deadline && (
+            <TaskDetailItem 
+              icon="clock" 
+              label="Deadline" 
+              value={task.deadline} 
+              color={Colors.amberText} 
+            />
+          )}
+          
+          {showRadius && (
+            <TaskDetailItem 
+              icon="crosshair" 
+              label="Radius" 
+              value={`${radiusM}m`} 
+              color={Colors.forest} 
+            />
+          )}
         </View>
-        {task.deadline ? (
-          <InfoRow
-            icon="⏰"
-            label="Deadline"
-            value={`Deadline: ${task.deadline}`}
-            tone="amber"
-          />
-        ) : null}
-        {showRadius ? (
-          <InfoRow
-            icon="🌾"
-            label="Radius"
-            value={`Radius lahan: ${radiusM} meter`}
-            tone="forest"
-          />
-        ) : null}
       </SurfaceCard>
     </Pressable>
   );
@@ -112,17 +147,50 @@ const styles = StyleSheet.create({
     borderRadius: Radius.card,
   },
   pressed: {
-    opacity: 0.82,
+    opacity: 0.85,
+  },
+  cardLayout: {
+    gap: 0,
+    padding: Spacing.four,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: Spacing.three,
+    paddingBottom: Spacing.three,
+  },
+  iconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.button,
+    backgroundColor: '#EBF4FF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   copy: {
     flex: 1,
+    gap: 2,
+  },
+  plotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginBottom: Spacing.three,
   },
   infoGrid: {
     gap: Spacing.two,
   },
+  detailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  detailLabel: {
+    width: 70, 
+  }
 });

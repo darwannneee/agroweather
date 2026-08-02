@@ -2,32 +2,53 @@ import { useId } from 'react';
 import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
 import { Colors, Radius, Spacing, Typography } from '@/constants/theme';
-
 import { AppText } from './app-text';
 
 export function FormField({
   label,
   error,
   help,
+  leftIcon, 
+  rightElement, 
   inputProps,
 }: {
   label: string;
   error?: string | null;
   help?: string;
+  leftIcon?: React.ReactNode; // <-- Ubah ke ReactNode agar bisa menerima Icon dari expo
+  rightElement?: React.ReactNode;
   inputProps: TextInputProps;
 }) {
   const nativeID = useId();
   return (
     <View style={styles.wrapper}>
-      <AppText nativeID={nativeID} variant="smallStrong">{label}</AppText>
-      <TextInput
-        accessibilityLabelledBy={nativeID}
-        accessibilityState={{ disabled: Boolean(inputProps.editable === false) }}
-        placeholderTextColor={Colors.muted}
-        style={[styles.input, error && styles.inputError, inputProps.multiline && styles.multiline]}
-        {...inputProps}
-        accessibilityHint={error ?? inputProps.accessibilityHint}
-      />
+      <AppText nativeID={nativeID} variant="smallStrong" color={Colors.muted}>
+        {label}
+      </AppText>
+      
+      <View style={[styles.inputContainer, error && styles.inputError]}>
+        {leftIcon && (
+          <View style={styles.leftIconContainer}>
+            {leftIcon}
+          </View>
+        )}
+        
+        <TextInput
+          accessibilityLabelledBy={nativeID}
+          accessibilityState={{ disabled: Boolean(inputProps.editable === false) }}
+          placeholderTextColor={Colors.border}
+          style={[styles.input, inputProps.multiline && styles.multiline]}
+          {...inputProps}
+          accessibilityHint={error ?? inputProps.accessibilityHint}
+        />
+
+        {rightElement && (
+          <View style={styles.rightElementContainer}>
+            {rightElement}
+          </View>
+        )}
+      </View>
+
       {error ? (
         <AppText
           variant="small"
@@ -45,23 +66,29 @@ export function FormField({
 }
 
 const styles = StyleSheet.create({
-  wrapper: { gap: Spacing.two },
-  input: {
-    ...Typography.body,
-    minHeight: 48,
-    color: Colors.ink,
+  wrapper: { gap: Spacing.one },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: Colors.surface,
     borderColor: Colors.border,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderRadius: Radius.input,
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.three,
-    shadowColor: Colors.ink,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
+    minHeight: 52,
+    paddingHorizontal: Spacing.three,
   },
   inputError: { borderColor: Colors.dangerText },
-  multiline: { minHeight: 96, textAlignVertical: 'top' },
+  leftIconContainer: {
+    marginRight: Spacing.two,
+  },
+  rightElementContainer: {
+    marginLeft: Spacing.two,
+  },
+  input: {
+    ...Typography.body,
+    flex: 1,
+    color: Colors.ink,
+    minHeight: 52,
+  },
+  multiline: { minHeight: 96, textAlignVertical: 'top', paddingTop: Spacing.three },
 });

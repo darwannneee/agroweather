@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
 
 import { Colors, Spacing } from '@/constants/theme';
@@ -12,7 +13,7 @@ export function InfoRow({
   tone = 'neutral',
   style,
 }: {
-  icon: string;
+  icon: ReactNode;
   label: string;
   value: string;
   tone?: IconBadgeTone;

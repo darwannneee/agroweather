@@ -1,7 +1,7 @@
+import { Feather } from '@expo/vector-icons';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
-import { IconBadge } from '@/components/ui/icon-badge';
 import { StatusPill } from '@/components/ui/status-pill';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -47,27 +47,39 @@ function AttendanceContent({
   record,
 }: AttendanceContentProps) {
   const present = status === 'present';
+  const iconColor = present ? Colors.forest : Colors.amberText;
+  const iconBg = present ? Colors.successBackground : Colors.warningBackground;
 
   return (
-    <SurfaceCard>
+    <SurfaceCard style={styles.cardContainer}>
       <View style={styles.header}>
-        <IconBadge
-          icon={present ? '✅' : '⏳'}
-          label={`Kehadiran ${farmerName}`}
-          tone={present ? 'forest' : 'neutral'}
-        />
+        {/* Mengganti IconBadge Emoji dengan Icon Modern */}
+        <View style={[styles.iconBox, { backgroundColor: iconBg }]}>
+          <Feather 
+            name={present ? "check-circle" : "clock"} 
+            size={20} 
+            color={iconColor} 
+          />
+        </View>
+
         <View style={styles.name}>
           <AppText variant="subtitle">
             {farmerName}
           </AppText>
           {present ? (
-            <AppText variant="small" color={Colors.muted}>
-              {jakartaTime(record.checkedInAt)} · {record.plotName}
-            </AppText>
+            <View style={styles.metaRow}>
+              <Feather name="map-pin" size={12} color={Colors.muted} />
+              <AppText variant="small" color={Colors.muted}>
+                {jakartaTime(record.checkedInAt)} · {record.plotName}
+              </AppText>
+            </View>
           ) : (
-            <AppText variant="small" color={Colors.muted}>
-              Menunggu check-in GPS hari ini
-            </AppText>
+            <View style={styles.metaRow}>
+              <Feather name="info" size={12} color={Colors.muted} />
+              <AppText variant="small" color={Colors.muted}>
+                Menunggu check-in GPS hari ini
+              </AppText>
+            </View>
           )}
         </View>
         <StatusPill
@@ -127,13 +139,28 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.82,
   },
+  cardContainer: {
+    paddingVertical: Spacing.three,
+  },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: Spacing.three,
+  },
+  iconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.button,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   name: {
     flex: 1,
-    gap: Spacing.one,
+    gap: 4,
   },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  }
 });

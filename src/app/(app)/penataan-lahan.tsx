@@ -1,14 +1,15 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { Alert } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
-import { RoleGuard } from '@/components/domain/role-guard';
 import { PlotCard } from '@/components/domain/plot-card';
 import { PlotStats } from '@/components/domain/plot-stats';
-import { AppButton } from '@/components/ui/app-button';
+import { RoleGuard } from '@/components/domain/role-guard';
 import { AppScreen } from '@/components/ui/app-screen';
+import { AppText } from '@/components/ui/app-text';
 import { FeedbackState } from '@/components/ui/feedback-state';
-import { ScreenHeader } from '@/components/ui/screen-header';
+import { Colors, Spacing } from '@/constants/theme';
 import type { FarmPlot } from '@/lib/farm-types';
 import { fetchPlots, setPlotStatus } from '@/services/plots';
 
@@ -108,57 +109,106 @@ export function PlotListScreen() {
   }
 
   return (
-    <AppScreen>
-      <ScreenHeader
-        eyebrow="Operasional"
-        title="Penataan Lahan"
-        description="Pemetaan lahan, petani, tanaman, dan fase kerja."
-        action={
-          <AppButton
-            label="Tambah Lahan"
-            icon="+"
-            onPress={() => router.push('/(app)/penataan-lahan/form')}
-          />
-        }
-      />
-
-      {loading ? (
-        <FeedbackState title="Memuat data lahan…" loading />
-      ) : loadError ? (
-        <FeedbackState
-          title="Data lahan belum tersedia"
-          message={loadError}
-          actionLabel="Coba Lagi"
-          onAction={() => void loadPlots()}
-        />
-      ) : plots.length === 0 ? (
-        <FeedbackState
-          title="Belum ada lahan"
-          message="Tambahkan lahan pertama untuk memulai pemetaan."
-        />
-      ) : (
-        <>
-          <PlotStats total={stats.total} active={stats.active} assigned={stats.assigned} />
-          {plots.map((plot) => (
-            <PlotCard
-              key={plot.id}
-              plot={plot}
-              statusLoading={mutatingId === plot.id}
-              statusDisabled={mutatingId !== null && mutatingId !== plot.id}
-              onEdit={() =>
-                router.push({
-                  pathname: '/(app)/penataan-lahan/form',
-                  params: { plotId: plot.id },
-                })
-              }
-              onToggleStatus={() => handleToggleStatus(plot)}
+    <View style={styles.container}>
+      <AppScreen contentContainerStyle={styles.screenContainer}>
+        {loading ? (
+          <View style={styles.centeredState}>
+            <FeedbackState title="Memuat data lahan…" loading />
+          </View>
+        ) : loadError ? (
+          <View style={styles.centeredState}>
+            <FeedbackState
+              title="Data lahan belum tersedia"
+              message={loadError}
+              actionLabel="Coba Lagi"
+              onAction={() => void loadPlots()}
             />
-          ))}
-        </>
-      )}
-    </AppScreen>
+          </View>
+        ) : plots.length === 0 ? (
+          <View style={styles.centeredState}>
+            <FeedbackState
+              title="Belum ada lahan"
+              message="Tambahkan lahan pertama untuk memulai pemetaan."
+            />
+          </View>
+        ) : (
+          <View style={styles.contentList}>
+            {/* Kartu Statistik Terpadu (Penuh Warna) */}
+            <PlotStats total={stats.total} active={stats.active} assigned={stats.assigned} />
+            
+            {/* List Kartu Lahan */}
+            {plots.map((plot) => (
+              <PlotCard
+                key={plot.id}
+                plot={plot}
+                statusLoading={mutatingId === plot.id}
+                statusDisabled={mutatingId !== null && mutatingId !== plot.id}
+                onEdit={() =>
+                  router.push({
+                    pathname: '/(app)/penataan-lahan/form',
+                    params: { plotId: plot.id },
+                  })
+                }
+                onToggleStatus={() => handleToggleStatus(plot)}
+              />
+            ))}
+          </View>
+        )}
+      </AppScreen>
+
+      {/* Extended Floating Action Button (FAB) */}
+      <Pressable 
+        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]} 
+        onPress={() => router.push('/(app)/penataan-lahan/form')}
+      >
+        <Feather name="plus" size={20} color={Colors.surface} />
+        <AppText variant="bodyStrong" color={Colors.surface} style={styles.fabText}>
+          Tambah Lahan
+        </AppText>
+      </Pressable>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1, 
+  },
+  screenContainer: {
+    paddingBottom: Spacing.seven * 2, 
+    paddingTop: Spacing.three, 
+  },
+  contentList: {
+    gap: Spacing.four,
+  },
+  centeredState: {
+    marginTop: Spacing.six,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: Spacing.six,
+    right: Spacing.five,
+    height: 56,
+    paddingHorizontal: Spacing.five,
+    borderRadius: 28, // Bentuk Pil
+    backgroundColor: Colors.forest,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  fabText: {
+    marginLeft: Spacing.two, // Jarak antara ikon + dan teks
+  },
+  fabPressed: {
+    transform: [{ scale: 0.96 }],
+    opacity: 0.9,
+  }
+});
 
 export default function PlotListRoute() {
   return (

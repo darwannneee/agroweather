@@ -1,17 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { usePreventRemove } from '@react-navigation/native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
-import { RoleGuard } from '@/components/domain/role-guard';
 import { MapPicker } from '@/components/domain/map-picker';
+import { RoleGuard } from '@/components/domain/role-guard';
 import { AppButton } from '@/components/ui/app-button';
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { FeedbackState } from '@/components/ui/feedback-state';
 import { FormField } from '@/components/ui/form-field';
-import { IconBadge } from '@/components/ui/icon-badge';
-import { ScreenHeader } from '@/components/ui/screen-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useLocationAction } from '@/hooks/use-location-action';
@@ -80,13 +79,15 @@ function SectionTitle({
   title,
   description,
 }: {
-  icon: string;
+  icon: keyof typeof Ionicons.glyphMap;
   title: string;
   description?: string;
 }) {
   return (
     <View style={styles.sectionHeader}>
-      <IconBadge icon={icon} label={title} tone="forest" />
+      <View style={styles.iconBox}>
+        <Ionicons name={icon} size={22} color={Colors.forest} />
+      </View>
       <View style={styles.sectionCopy}>
         <AppText variant="subtitle">{title}</AppText>
         {description ? (
@@ -298,16 +299,10 @@ export function PlotFormContent() {
   }
 
   return (
-    <AppScreen>
-      <ScreenHeader
-        eyebrow="Penataan Lahan"
-        title={plotId ? 'Edit Lahan' : 'Tambah Lahan'}
-        description="Lengkapi data dan konfirmasi titik lahan."
-      />
-
+    <AppScreen contentContainerStyle={{ paddingTop: Spacing.four }}>
       <SurfaceCard>
         <SectionTitle
-          icon="🧾"
+          icon="document-text-outline"
           title="Informasi Lahan"
           description="Nama, komoditas, luas, dan fase kerja."
         />
@@ -356,7 +351,7 @@ export function PlotFormContent() {
 
       <SurfaceCard>
         <SectionTitle
-          icon="👨‍🌾"
+          icon="people-outline"
           title="Petani Penanggung Jawab"
           description="Bisa pilih lebih dari satu petani. Petani utama dipakai sebagai default assign task."
         />
@@ -401,7 +396,7 @@ export function PlotFormContent() {
       {selectedFarmers.length > 0 ? (
         <SurfaceCard>
           <SectionTitle
-            icon="⭐"
+            icon="star-outline"
             title="Petani Utama"
             description="Dipakai untuk default assignee draft AI dan task manual."
           />
@@ -432,7 +427,7 @@ export function PlotFormContent() {
 
       <SurfaceCard>
         <SectionTitle
-          icon="📍"
+          icon="location-outline"
           title="Lokasi Lahan"
           description="Konfirmasi titik GPS dan radius geofence lahan."
         />
@@ -486,12 +481,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
+    marginBottom: Spacing.one,
+  },
+  iconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.button,
+    backgroundColor: `${Colors.forest}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sectionCopy: {
     flex: 1,
-    gap: Spacing.one,
+    gap: 2,
   },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  chips: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    gap: Spacing.two,
+    marginTop: Spacing.two,
+  },
   chip: {
     minHeight: 44,
     justifyContent: 'center',

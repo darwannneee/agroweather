@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -28,7 +29,7 @@ export function AppButton({
   ...props
 }: Omit<PressableProps, 'children' | 'style'> & {
   label: string;
-  icon?: string;
+  icon?: ReactNode;
   variant?: ButtonVariant;
   loading?: boolean;
 }) {
@@ -54,9 +55,13 @@ export function AppButton({
       ) : (
         <View style={styles.content}>
           {icon ? (
-            <AppText variant="bodyStrong" color={colors.text}>
-              {icon}
-            </AppText>
+            typeof icon === 'string' ? (
+              <AppText variant="bodyStrong" color={colors.text}>
+                {icon}
+              </AppText>
+            ) : (
+              icon
+            )
           ) : null}
           <AppText variant="bodyStrong" color={colors.text}>
             {label}

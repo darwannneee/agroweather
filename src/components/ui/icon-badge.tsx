@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
 
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -22,7 +23,7 @@ export function IconBadge({
   size = 'md',
   style,
 }: {
-  icon: string;
+  icon: ReactNode;
   label: string;
   decorative?: boolean;
   tone?: IconBadgeTone;
@@ -50,13 +51,17 @@ export function IconBadge({
         style,
       ]}
     >
-      <AppText
-        variant={size === 'lg' ? 'title' : 'subtitle'}
-        color={colors.color}
-        style={styles.icon}
-      >
-        {icon}
-      </AppText>
+      {typeof icon === 'string' ? (
+        <AppText
+          variant={size === 'lg' ? 'title' : 'subtitle'}
+          color={colors.color}
+          style={styles.icon}
+        >
+          {icon}
+        </AppText>
+      ) : (
+        icon
+      )}
     </View>
   );
 }

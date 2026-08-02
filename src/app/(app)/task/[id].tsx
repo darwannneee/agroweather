@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { EvidenceAttemptCard } from '@/components/domain/evidence-attempt-card';
 import {
@@ -9,16 +10,12 @@ import {
 } from '@/components/domain/evidence-picker';
 import { LocationActionCard } from '@/components/domain/location-action-card';
 import { RoleGuard } from '@/components/domain/role-guard';
-import { AppButton } from '@/components/ui/app-button';
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { FeedbackState } from '@/components/ui/feedback-state';
 import { FormField } from '@/components/ui/form-field';
-import { IconBadge } from '@/components/ui/icon-badge';
-import { InfoRow } from '@/components/ui/info-row';
-import { ScreenHeader } from '@/components/ui/screen-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useLocationAction } from '@/hooks/use-location-action';
 import { buildMvpAnalysisSummary } from '@/lib/analysis';
 import type {
@@ -53,14 +50,16 @@ const priorityLabels: Record<TaskPriority, string> = {
   high: 'Tinggi',
 };
 
-const TASK_LOAD_ERROR =
-  'Detail task belum dapat dimuat. Silakan coba lagi.';
-const TASK_ASSIGNMENT_ERROR =
-  'Task ini tidak ditugaskan kepada akun Anda.';
-const EVIDENCE_UPLOAD_ERROR =
-  'Bukti belum dapat diunggah. Periksa koneksi lalu coba lagi.';
-const TASK_START_ERROR =
-  'Lokasi valid, tetapi task belum dapat dimulai. Periksa koneksi lalu coba lagi.';
+const priorityColors: Record<TaskPriority, string> = {
+  low: Colors.forest,
+  medium: Colors.amberText,
+  high: Colors.dangerText,
+};
+
+const TASK_LOAD_ERROR = 'Detail task belum dapat dimuat. Silakan coba lagi.';
+const TASK_ASSIGNMENT_ERROR = 'Task ini tidak ditugaskan kepada akun Anda.';
+const EVIDENCE_UPLOAD_ERROR = 'Bukti belum dapat diunggah. Periksa koneksi lalu coba lagi.';
+const TASK_START_ERROR = 'Lokasi valid, tetapi task belum dapat dimulai. Periksa koneksi lalu coba lagi.';
 
 type LocationSettingsStatus = Extract<
   CurrentLocationResult['status'],
@@ -81,27 +80,49 @@ function submissionReadingErrorMessage(): string {
   return 'Akurasi GPS berubah. Bukti belum dikirim; pindah ke area terbuka lalu coba lagi.';
 }
 
-function locationSettingsStatus(
-  result?: CurrentLocationResult
-): LocationSettingsStatus | null {
-  if (
-    result?.status === 'permission-blocked' ||
-    result?.status === 'services-disabled'
-  ) {
+function locationSettingsStatus(result?: CurrentLocationResult): LocationSettingsStatus | null {
+  if (result?.status === 'permission-blocked' || result?.status === 'services-disabled') {
     return result.status;
   }
   return null;
 }
 
-function mergeRegisteredAttempt(
-  attempts: EvidenceAttempt[],
-  registered: EvidenceAttempt
-): EvidenceAttempt[] {
-  const merged = attempts.some(({ id }) => id === registered.id)
-    ? attempts
-    : [...attempts, registered];
-  return [...merged].sort(
-    (a, b) => a.attemptNumber - b.attemptNumber
+function mergeRegisteredAttempt(attempts: EvidenceAttempt[], registered: EvidenceAttempt): EvidenceAttempt[] {
+  const merged = attempts.some(({ id }) => id === registered.id) ? attempts : [...attempts, registered];
+  return [...merged].sort((a, b) => a.attemptNumber - b.attemptNumber);
+}
+
+// --- Komponen Lokal UI ---
+function LocalDetailRow({ icon, label, value, colorTone }: { icon: keyof typeof Feather.glyphMap, label: string, value: string, colorTone: string }) {
+  return (
+    <View style={styles.detailRow}>
+      <View style={styles.detailIconBox}>
+        <Feather name={icon} size={16} color={colorTone} />
+      </View>
+      <View style={styles.detailTextContainer}>
+        <AppText variant="smallStrong" color={Colors.ink}>{label}</AppText>
+        <AppText variant="small" color={Colors.muted}>{value}</AppText>
+      </View>
+    </View>
+  );
+}
+
+// Tombol kustom untuk menghindari error Type AppButton bawaan
+function ActionButton({ label, icon, onPress, disabled, loading }: { label: string, icon: keyof typeof Feather.glyphMap, onPress: () => void, disabled?: boolean, loading?: boolean }) {
+  return (
+    <Pressable 
+      onPress={onPress} 
+      disabled={disabled || loading}
+      style={({ pressed }) => [
+        styles.actionButton,
+        (pressed || disabled || loading) && styles.actionButtonPressed
+      ]}
+    >
+      <Feather name={icon} size={18} color={Colors.surface} />
+      <AppText variant="bodyStrong" color={Colors.surface}>
+        {loading ? 'Memproses...' : label}
+      </AppText>
+    </Pressable>
   );
 }
 
@@ -121,23 +142,18 @@ export function TaskDetailScreen() {
   const unlockActive = useRef(false);
   const submissionActive = useRef(false);
   const taskStarted = useRef(false);
+  
   const [task, setTask] = useState<FarmTask | null>(null);
   const [plot, setPlot] = useState<FarmPlot | null>(null);
   const [attempts, setAttempts] = useState<EvidenceAttempt[]>([]);
-  const [unlockReading, setUnlockReading] =
-    useState<GrantedLocationResult | null>(null);
+  const [unlockReading, setUnlockReading] = useState<GrantedLocationResult | null>(null);
   const [geofence, setGeofence] = useState<GeofenceResult | null>(null);
   const [unlocked, setUnlocked] = useState(false);
-  const [unlockLocationError, setUnlockLocationError] =
-    useState<string | null>(null);
-  const [submitLocationError, setSubmitLocationError] =
-    useState<string | null>(null);
-  const [submitSettingsStatus, setSubmitSettingsStatus] =
-    useState<LocationSettingsStatus | null>(null);
-  const [submissionError, setSubmissionError] =
-    useState<string | null>(null);
-  const [submissionFeedback, setSubmissionFeedback] =
-    useState<string | null>(null);
+  const [unlockLocationError, setUnlockLocationError] = useState<string | null>(null);
+  const [submitLocationError, setSubmitLocationError] = useState<string | null>(null);
+  const [submitSettingsStatus, setSubmitSettingsStatus] = useState<LocationSettingsStatus | null>(null);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [submissionFeedback, setSubmissionFeedback] = useState<string | null>(null);
   const [asset, setAsset] = useState<EvidenceAsset | null>(null);
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
@@ -147,8 +163,7 @@ export function TaskDetailScreen() {
   const latestAttempt = attempts.at(-1) ?? null;
   const pendingReview = latestAttempt?.status === 'pending';
   const revisionNeeded = latestAttempt?.status === 'revision_requested';
-  const completed =
-    task?.status === 'selesai' || latestAttempt?.status === 'accepted';
+  const completed = task?.status === 'selesai' || latestAttempt?.status === 'accepted';
 
   const analysisSummary = useMemo(() => {
     if (!task || !plot) return null;
@@ -297,9 +312,7 @@ export function TaskDetailScreen() {
         if (unlockVersion.current !== version) return;
         taskStarted.current = true;
         setTask((current) =>
-          current
-            ? { ...current, status: 'sedang_dikerjakan' }
-            : current
+          current ? { ...current, status: 'sedang_dikerjakan' } : current
         );
       }
 
@@ -312,10 +325,7 @@ export function TaskDetailScreen() {
     }
   }
 
-  function showSubmitLocationError(
-    message: string,
-    result?: CurrentLocationResult
-  ) {
+  function showSubmitLocationError(message: string, result?: CurrentLocationResult) {
     setSubmitLocationError(message);
     setSubmitSettingsStatus(locationSettingsStatus(result));
   }
@@ -352,20 +362,14 @@ export function TaskDetailScreen() {
 
         if (fresh.status !== 'granted') {
           showSubmitLocationError(
-            fresh.status === 'low-accuracy'
-              ? submissionReadingErrorMessage()
-              : fresh.message,
+            fresh.status === 'low-accuracy' ? submissionReadingErrorMessage() : fresh.message,
             fresh
           );
           return;
         }
 
         const readingIssue = validateLocationReading(
-          {
-            ...fresh.coords,
-            accuracyM: fresh.accuracyM,
-            timestamp: fresh.timestamp,
-          },
+          { ...fresh.coords, accuracyM: fresh.accuracyM, timestamp: fresh.timestamp },
           plot.radiusGeofenceM
         );
         if (readingIssue) {
@@ -404,38 +408,24 @@ export function TaskDetailScreen() {
       const localAttempts = mergeRegisteredAttempt(attempts, registered);
       setAttempts(localAttempts);
       setTask((current) =>
-        current
-          ? {
-              ...current,
-              status: 'sedang_dikerjakan',
-              latestEvidence: { status: 'pending', reviewNote: null },
-            }
-          : current
+        current ? { ...current, status: 'sedang_dikerjakan', latestEvidence: { status: 'pending', reviewNote: null } } : current
       );
       setAsset(null);
       setNote('');
       setUnlocked(false);
-      setSubmissionFeedback(
-        'Bukti terkirim dan menunggu review internal'
-      );
+      setSubmissionFeedback('Bukti terkirim dan menunggu review internal');
 
       try {
         const [nextTask, nextAttempts] = await Promise.all([
           fetchTaskDetail(task.id),
           fetchTaskEvidenceAttempts(task.id),
         ]);
-        if (
-          submissionVersion.current === version &&
-          nextTask.assignedTo === farmerId
-        ) {
+        if (submissionVersion.current === version && nextTask.assignedTo === farmerId) {
           setTask(nextTask);
-          setAttempts(
-            mergeRegisteredAttempt(nextAttempts, registered)
-          );
+          setAttempts(mergeRegisteredAttempt(nextAttempts, registered));
         }
       } catch {
-        // Registration already succeeded. Keep the local pending attempt so a
-        // stale refresh cannot expose another upload action.
+        // Registration already succeeded.
       }
     } catch {
       if (submissionVersion.current === version) {
@@ -519,13 +509,7 @@ export function TaskDetailScreen() {
           }
           message={result.message ?? 'Lokasi belum dapat diperiksa.'}
           actionLabel={settingsStatus ? 'Buka Pengaturan' : 'Periksa Lagi'}
-          onAction={
-            settingsStatus
-              ? () => {
-                  void openLocationSettings(settingsStatus);
-                }
-              : handleUnlock
-          }
+          onAction={settingsStatus ? () => { void openLocationSettings(settingsStatus); } : handleUnlock}
         />
       );
     }
@@ -562,200 +546,167 @@ export function TaskDetailScreen() {
           message="Periksa kembali task yang Anda buka."
         />
       ) : (
-        <>
-          <ScreenHeader
-            eyebrow="Detail Task"
-            title={task.judul}
-            description={`${plot.namaLahan} · ${plot.jenisTanaman}`}
-          />
+        <View style={styles.contentContainer}>
+          {/* Header Action / Title - Modernized */}
+          <View style={styles.titleArea}>
+            <AppText variant="display" color={Colors.ink}>{task.judul}</AppText>
+            <View style={styles.titleMeta}>
+              <Feather name="map" size={14} color={Colors.muted} />
+              <AppText variant="small" color={Colors.muted}>
+                {plot.namaLahan} · {plot.jenisTanaman}
+              </AppText>
+            </View>
+          </View>
 
-          <SurfaceCard>
+          {/* Ringkasan Task Modern */}
+          <SurfaceCard style={styles.cardLayout}>
             <View style={styles.cardHeader}>
-              <IconBadge icon="📝" label="Ringkasan Task" tone="forest" />
+              <View style={[styles.sectionIconBox, { backgroundColor: Colors.mint }]}>
+                <Feather name="file-text" size={20} color={Colors.forest} />
+              </View>
               <View style={styles.cardCopy}>
                 <AppText variant="subtitle">Ringkasan Task</AppText>
                 <AppText variant="small" color={Colors.muted}>
-                  Instruksi kerja, jadwal, dan aturan bukti untuk task ini.
+                  Instruksi dan jadwal penugasan.
                 </AppText>
               </View>
             </View>
-            <InfoRow icon="🌾" label="Lahan" value={`Lahan: ${plot.namaLahan}`} />
-            <InfoRow
-              icon="🚦"
-              label="Prioritas"
-              value={`Prioritas: ${priorityLabels[task.priority]}`}
-              tone={task.priority === 'high' ? 'danger' : task.priority === 'medium' ? 'amber' : 'forest'}
-            />
-            <InfoRow
-              icon="📅"
-              label="Jadwal"
-              value={`Jadwal: ${task.scheduledFor}`}
-              tone="sky"
-            />
-            <InfoRow
-              icon="📋"
-              label="Instruksi"
-              value={`Instruksi: ${task.deskripsi ?? 'Kerjakan sesuai arahan internal.'}`}
-            />
-            {task.aiReason ? (
-              <InfoRow
-                icon="🤖"
-                label="Alasan AI"
-                value={`Alasan AI: ${task.aiReason}`}
-                tone="amber"
-              />
-            ) : null}
-            <InfoRow
-              icon={task.requiresLocation ? '📍' : '📎'}
-              label="Bukti lokasi"
-              value={`Bukti lokasi: ${task.requiresLocation ? 'Wajib' : 'Tidak diwajibkan'}`}
-              tone={task.requiresLocation ? 'forest' : 'neutral'}
-            />
+            
+            <View style={styles.divider} />
+            
+            <View style={styles.detailInfoGrid}>
+               <LocalDetailRow icon="flag" label="Prioritas" value={priorityLabels[task.priority]} colorTone={priorityColors[task.priority]} />
+               <LocalDetailRow icon="calendar" label="Jadwal" value={task.scheduledFor} colorTone={Colors.ink} />
+               <LocalDetailRow icon="align-left" label="Instruksi" value={task.deskripsi ?? 'Kerjakan sesuai arahan.'} colorTone={Colors.ink} />
+               {task.aiReason && (
+                 <LocalDetailRow icon="cpu" label="Alasan AI" value={task.aiReason} colorTone={Colors.amberText} />
+               )}
+               <LocalDetailRow 
+                 icon={task.requiresLocation ? "map-pin" : "paperclip"} 
+                 label="Bukti GPS" 
+                 value={task.requiresLocation ? 'Wajib di lokasi' : 'Opsional'} 
+                 colorTone={task.requiresLocation ? Colors.forest : Colors.muted} 
+               />
+            </View>
           </SurfaceCard>
 
-          {attempts.length > 0 ? (
-            <>
+          {/* Riwayat Bukti Section */}
+          {attempts.length > 0 && (
+            <View style={styles.sectionMargin}>
               <View style={styles.sectionTitleRow}>
-                <IconBadge icon="📸" label="Riwayat Bukti" tone="sky" />
+                <View style={[styles.sectionIconBox, { backgroundColor: Colors.sky }]}>
+                  <Feather name="camera" size={20} color={Colors.skyText} />
+                </View>
                 <View style={styles.cardCopy}>
-                  <AppText variant="title">Riwayat Bukti</AppText>
+                  <AppText variant="subtitle">Riwayat Bukti</AppText>
                   <AppText variant="small" color={Colors.muted}>
-                    Semua bukti yang pernah dikirim untuk task ini.
+                    Catatan pengiriman untuk task ini.
                   </AppText>
                 </View>
               </View>
-              {attempts.map((attempt) => (
-                <EvidenceAttemptCard key={attempt.id} attempt={attempt} />
-              ))}
-            </>
-          ) : null}
+              <View style={styles.attemptsContainer}>
+                {attempts.map((attempt) => (
+                  <EvidenceAttemptCard key={attempt.id} attempt={attempt} />
+                ))}
+              </View>
+            </View>
+          )}
 
+          {/* Status Workflow Section */}
           {completed ? (
-            <SurfaceCard>
+            <SurfaceCard style={styles.cardLayout}>
               <View style={styles.cardHeader}>
-                <IconBadge icon="✅" label="Task selesai" />
+                <View style={[styles.sectionIconBox, { backgroundColor: Colors.successBackground }]}>
+                  <Feather name="check-circle" size={20} color={Colors.forest} />
+                </View>
                 <View style={styles.cardCopy}>
-                  <AppText variant="subtitle" color={Colors.successText}>
-                    Task selesai
-                  </AppText>
-                  <AppText variant="small" color={Colors.muted}>
-                    Status akhir sudah tersimpan.
-                  </AppText>
+                  <AppText variant="subtitle" color={Colors.forest}>Task Selesai</AppText>
+                  <AppText variant="small" color={Colors.muted}>Status akhir telah disetujui.</AppText>
                 </View>
               </View>
-              <AppText variant="small">
-                {latestAttempt?.status === 'accepted'
-                  ? 'Bukti telah diterima internal. Riwayat tetap dapat dilihat.'
-                  : 'Diselesaikan sebelum alur review bukti diberlakukan.'}
-              </AppText>
             </SurfaceCard>
           ) : pendingReview ? (
-            <SurfaceCard>
+            <SurfaceCard style={styles.cardLayout}>
               <View style={styles.cardHeader}>
-                <IconBadge icon="⏳" label="Menunggu review internal" tone="amber" />
+                <View style={[styles.sectionIconBox, { backgroundColor: Colors.warningBackground }]}>
+                  <Feather name="clock" size={20} color={Colors.amberText} />
+                </View>
                 <View style={styles.cardCopy}>
-                  <AppText variant="subtitle">Menunggu review internal</AppText>
-                  <AppText variant="small" color={Colors.muted}>
-                    Bukti terbaru sudah terkirim.
-                  </AppText>
+                  <AppText variant="subtitle" color={Colors.amberText}>Menunggu Review</AppText>
+                  <AppText variant="small" color={Colors.muted}>Bukti sedang diperiksa oleh internal.</AppText>
                 </View>
               </View>
-              <AppText variant="small">
-                Bukti terbaru sedang diperiksa. Pengiriman baru akan tersedia
-                jika internal meminta perbaikan.
-              </AppText>
             </SurfaceCard>
           ) : revisionNeeded ? (
-            <SurfaceCard>
+            <SurfaceCard style={styles.cardLayout}>
               <View style={styles.cardHeader}>
-                <IconBadge icon="⚠️" label="Perlu perbaikan" tone="danger" />
+                <View style={[styles.sectionIconBox, { backgroundColor: Colors.dangerBackground }]}>
+                  <Feather name="alert-triangle" size={20} color={Colors.dangerText} />
+                </View>
                 <View style={styles.cardCopy}>
-                  <AppText variant="subtitle" color={Colors.dangerText}>
-                    Perlu perbaikan
-                  </AppText>
-                  <AppText variant="small" color={Colors.muted}>
-                    Ikuti catatan reviewer sebelum kirim ulang.
-                  </AppText>
+                  <AppText variant="subtitle" color={Colors.dangerText}>Perlu Perbaikan</AppText>
+                  <AppText variant="small" color={Colors.muted}>Ikuti catatan reviewer untuk kirim ulang.</AppText>
                 </View>
               </View>
-              <AppText variant="small">
-                Catatan reviewer: {latestAttempt.reviewNote ?? 'Perbaiki bukti lalu kirim kembali.'}
-              </AppText>
+              <View style={styles.divider} />
+              <AppText variant="smallStrong" color={Colors.dangerText}>Catatan Reviewer:</AppText>
+              <AppText variant="small" color={Colors.ink}>{latestAttempt?.reviewNote ?? '-'}</AppText>
             </SurfaceCard>
           ) : null}
 
-          {submissionFeedback ? (
-            <AppText
-              variant="smallStrong"
-              color={Colors.successText}
-              accessibilityLiveRegion="polite"
-            >
+          {submissionFeedback && (
+            <AppText variant="smallStrong" color={Colors.successText} style={{ textAlign: 'center', marginTop: Spacing.two }}>
               {submissionFeedback}
             </AppText>
-          ) : null}
+          )}
 
           {renderTaskLocationCard()}
 
-          {unlocked && !pendingReview && !completed ? (
-            <>
+          {/* Form Pengiriman Bukti Baru */}
+          {unlocked && !pendingReview && !completed && (
+            <View style={styles.submissionSection}>
+               <AppText variant="subtitle" style={{ marginBottom: Spacing.two }}>Unggah Bukti Baru</AppText>
               <EvidencePicker
                 asset={asset}
                 onChange={setAsset}
-                disabled={
-                  submitting || locationActionState.status === 'checking'
-                }
+                disabled={submitting || locationActionState.status === 'checking'}
               />
               <FormField
-                label="Catatan Bukti"
+                label="Catatan Lapangan"
                 inputProps={{
-                  accessibilityLabel: 'Catatan Bukti',
+                  accessibilityLabel: 'Catatan Lapangan',
                   value: note,
                   onChangeText: setNote,
-                  placeholder: 'Contoh: Saluran air sudah dibersihkan',
+                  placeholder: 'Cth: Gulma sudah dibersihkan',
                   multiline: true,
-                  editable:
-                    !submitting &&
-                    locationActionState.status !== 'checking',
+                  editable: !submitting && locationActionState.status !== 'checking',
                 }}
               />
-              {submitLocationError ? (
+              {submitLocationError && (
                 <LocationActionCard
                   state={submitSettingsStatus ? 'danger' : 'warning'}
                   title="Bukti belum dikirim"
                   message={submitLocationError}
-                  actionLabel={
-                    submitSettingsStatus ? 'Buka Pengaturan' : undefined
-                  }
-                  onAction={
-                    submitSettingsStatus
-                      ? () => {
-                          void openLocationSettings(submitSettingsStatus);
-                        }
-                      : undefined
-                  }
+                  actionLabel={submitSettingsStatus ? 'Buka Pengaturan' : undefined}
+                  onAction={submitSettingsStatus ? () => { void openLocationSettings(submitSettingsStatus); } : undefined}
                 />
-              ) : null}
-              {submissionError ? (
-                <LocationActionCard
-                  state="warning"
-                  title="Bukti belum tersimpan"
-                  message={submissionError}
+              )}
+              {submissionError && (
+                <LocationActionCard state="warning" title="Bukti belum tersimpan" message={submissionError} />
+              )}
+              
+              <View style={styles.submitBtn}>
+                <ActionButton
+                  label={task.requiresLocation ? 'Periksa GPS & Kirim' : 'Kirim Bukti'}
+                  icon={task.requiresLocation ? 'map-pin' : 'upload'}
+                  loading={submitting}
+                  disabled={locationActionState.status === 'checking' || !asset}
+                  onPress={handleSubmit}
                 />
-              ) : null}
-              <AppButton
-                label={
-                  task.requiresLocation
-                    ? 'Periksa GPS & Kirim Bukti'
-                    : 'Kirim Bukti'
-                }
-                icon={task.requiresLocation ? '📍' : '📤'}
-                loading={submitting}
-                disabled={locationActionState.status === 'checking'}
-                onPress={handleSubmit}
-              />
-            </>
-          ) : null}
-        </>
+              </View>
+            </View>
+          )}
+        </View>
       )}
     </AppScreen>
   );
@@ -770,18 +721,91 @@ export default function TaskDetailRoute() {
 }
 
 const styles = StyleSheet.create({
+  contentContainer: {
+    gap: Spacing.four,
+    paddingBottom: Spacing.five,
+  },
+  titleArea: {
+    marginBottom: Spacing.two,
+  },
+  titleMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    marginTop: Spacing.one,
+  },
+  cardLayout: {
+    padding: Spacing.four,
+    gap: 0,
+  },
   cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  sectionIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.button,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: Spacing.four,
+  },
+  detailInfoGrid: {
+    gap: Spacing.three,
+  },
+  detailRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: Spacing.three,
   },
-  cardCopy: {
+  detailIconBox: {
+    width: 24,
+    alignItems: 'center',
+    paddingTop: 2,
+  },
+  detailTextContainer: {
     flex: 1,
-    gap: Spacing.one,
+  },
+  sectionMargin: {
+    marginTop: Spacing.two,
   },
   sectionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
+    marginBottom: Spacing.three,
   },
+  attemptsContainer: {
+    gap: Spacing.three,
+  },
+  submissionSection: {
+    marginTop: Spacing.four,
+    gap: Spacing.four,
+  },
+  submitBtn: {
+    marginTop: Spacing.two,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
+    backgroundColor: Colors.forest,
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.four,
+    borderRadius: Radius.button,
+    minHeight: 48,
+  },
+  actionButtonPressed: {
+    opacity: 0.7,
+  }
 });

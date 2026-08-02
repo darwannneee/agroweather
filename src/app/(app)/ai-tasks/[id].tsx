@@ -1,3 +1,6 @@
+import { Feather } from '@expo/vector-icons';
+import type { Href } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   useCallback,
   useEffect,
@@ -5,8 +8,6 @@ import {
   useState,
 } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import type { Href } from 'expo-router';
 
 import { RoleGuard } from '@/components/domain/role-guard';
 import { AppButton } from '@/components/ui/app-button';
@@ -98,9 +99,7 @@ function ChoiceChip({
       ]}
     >
       {selected ? (
-        <AppText variant="smallStrong" color={Colors.surface}>
-          ✓
-        </AppText>
+        <Feather name="check" size={14} color={Colors.surface} />
       ) : null}
       <AppText
         variant="smallStrong"
@@ -326,7 +325,11 @@ export function AiTaskReviewScreen() {
 
       <SurfaceCard>
         <View style={styles.cardHeader}>
-          <IconBadge icon="🌤️" label="Ringkasan Cuaca" tone="sky" />
+          <IconBadge
+            icon={<Feather name="cloud" size={18} color={Colors.skyText} />}
+            label="Ringkasan Cuaca"
+            tone="sky"
+          />
           <View style={styles.cardCopy}>
             <AppText variant="subtitle">Ringkasan Cuaca</AppText>
             <AppText variant="small" color={Colors.muted}>
@@ -335,47 +338,47 @@ export function AiTaskReviewScreen() {
           </View>
         </View>
         <InfoRow
-          icon="🕒"
+          icon={<Feather name="clock" size={16} color={Colors.skyText} />}
           label="Waktu observasi"
           value={`Waktu observasi: ${formatWib(weather.observedAt)}`}
           tone="sky"
         />
         <InfoRow
-          icon="☁️"
+          icon={<Feather name="cloud" size={16} color={Colors.ink} />}
           label="Kondisi"
           value={`Kondisi: ${weather.description}`}
         />
         <InfoRow
-          icon="🌡️"
+          icon={<Feather name="thermometer" size={16} color={Colors.amberText} />}
           label="Suhu"
           value={`Suhu: ${weather.temperatureC}°C`}
           tone="amber"
         />
         <InfoRow
-          icon="💧"
+          icon={<Feather name="droplet" size={16} color={Colors.skyText} />}
           label="Kelembapan"
           value={`Kelembapan: ${weather.humidityPercent}%`}
           tone="sky"
         />
         <InfoRow
-          icon="🌬️"
+          icon={<Feather name="wind" size={16} color={Colors.ink} />}
           label="Angin"
           value={`Angin: ${weather.windSpeedMps} m/s`}
         />
         <InfoRow
-          icon="☔"
+          icon={<Feather name="cloud-rain" size={16} color={Colors.skyText} />}
           label="Hujan"
           value={`Hujan: ${weather.rainMm} mm`}
           tone="sky"
         />
         <InfoRow
-          icon="📈"
+          icon={<Feather name="trending-up" size={16} color={Colors.amberText} />}
           label="Suhu hari ini"
           value={`Suhu hari ini: ${temperatureRange}`}
           tone="amber"
         />
         <InfoRow
-          icon="🌧️"
+          icon={<Feather name="cloud-drizzle" size={16} color={Colors.skyText} />}
           label="Peluang hujan"
           value={`Peluang hujan maksimum: ${rainProbability}`}
           tone="sky"
@@ -384,7 +387,10 @@ export function AiTaskReviewScreen() {
 
       <SurfaceCard>
         <View style={styles.cardHeader}>
-          <IconBadge icon="🤖" label="Alasan Rekomendasi AI" />
+          <IconBadge
+            icon={<Feather name="cpu" size={18} color={Colors.forest} />}
+            label="Alasan Rekomendasi AI"
+          />
           <View style={styles.cardCopy}>
             <AppText variant="subtitle">Alasan Rekomendasi AI</AppText>
             <AppText variant="small" color={Colors.muted}>
@@ -397,7 +403,11 @@ export function AiTaskReviewScreen() {
 
       <SurfaceCard>
         <View style={styles.cardHeader}>
-          <IconBadge icon="📝" label="Detail Task" tone="amber" />
+          <IconBadge
+            icon={<Feather name="edit-3" size={18} color={Colors.amberText} />}
+            label="Detail Task"
+            tone="amber"
+          />
           <View style={styles.cardCopy}>
             <AppText variant="subtitle">Detail Task</AppText>
             <AppText variant="small" color={Colors.muted}>
@@ -489,7 +499,13 @@ export function AiTaskReviewScreen() {
         >
           <View style={styles.switchContent}>
             <IconBadge
-              icon={requiresLocation ? '📍' : '📎'}
+              icon={
+                requiresLocation ? (
+                  <Feather name="map-pin" size={16} color={Colors.forest} />
+                ) : (
+                  <Feather name="paperclip" size={16} color={Colors.ink} />
+                )
+              }
               label="Kebutuhan lokasi"
               tone={requiresLocation ? 'forest' : 'neutral'}
               size="sm"
@@ -508,7 +524,11 @@ export function AiTaskReviewScreen() {
 
       <SurfaceCard>
         <View style={styles.cardHeader}>
-          <IconBadge icon="⚖️" label="Keputusan Review" tone="sky" />
+          <IconBadge
+            icon={<Feather name="check-square" size={18} color={Colors.skyText} />}
+            label="Keputusan Review"
+            tone="sky"
+          />
           <View style={styles.cardCopy}>
             <AppText variant="subtitle">Keputusan Review</AppText>
             <AppText variant="small" color={Colors.muted}>
@@ -543,7 +563,7 @@ export function AiTaskReviewScreen() {
             <AppButton
               label="Tolak Draft"
               variant="danger"
-              icon="×"
+              icon={<Feather name="x" size={16} color={Colors.dangerText} />}
               loading={actionPending === 'reject'}
               disabled={actionsBlocked}
               onPress={confirmReject}
@@ -553,7 +573,7 @@ export function AiTaskReviewScreen() {
             <AppButton
               label="Setujui Draft"
               variant="forest"
-              icon="✓"
+              icon={<Feather name="check" size={16} color={Colors.surface} />}
               loading={actionPending === 'approve'}
               disabled={actionsBlocked}
               onPress={() => void handleApprove()}
